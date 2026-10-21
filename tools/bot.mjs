@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Wordfall M6 balance bot (keeps the M5 acceptance cells on the v1.1 build).
+ * Wordfall M7 balance bot (keeps the M5 acceptance cells on the v1.2 M7 build).
  *
  * Loads the real game in headless Chrome (playwright-core + installed Chrome),
  * then calls the in-page debug simulator `window.__wordfall.sim(...)` for a
@@ -17,10 +17,10 @@
  *   node tools/bot.mjs --seeds 200   # more seeds = steadier percentages
  *   node tools/bot.mjs --seed-base 5000 --seeds 100   # independent seed block
  *   node tools/bot.mjs --wpm 60,80 --json             # machine-readable only
- *   node tools/bot.mjs --wait-sec 60                  # shorten "wait for M6" window
+ *   node tools/bot.mjs --wait-sec 60                  # shorten "wait for M7" window
  *
  * Exits 0 when every assertion passes, 1 when any fails / the game never becomes
- * M6 / a sweep errors, 2 on bad CLI usage. Human-readable by default; --json
+ * M7 / a sweep errors, 2 on bad CLI usage. Human-readable by default; --json
  * prints only the JSON result on stdout (progress goes to stderr).
  */
 import { chromium } from 'playwright-core';
@@ -33,10 +33,10 @@ const ROOT = path.resolve(SCRIPT_DIR, '..');
 const INDEX_URL = pathToFileURL(path.join(ROOT, 'index.html')).href;
 
 const COMBO_TIMEOUT_MS = 120000; // a single (wpm, mode) sweep of N synchronous sims
-const RETRY_WAIT_MS = 20000;     // between "game.js is not M6 yet" reloads
+const RETRY_WAIT_MS = 20000;     // between "game.js is not M7 yet" reloads
 const MODES = ['skip', 'random'];
 
-const USAGE = `Wordfall M6 balance bot
+const USAGE = `Wordfall M7 balance bot
 
 Usage: node tools/bot.mjs [options]
 
@@ -46,7 +46,7 @@ Options:
   --seed-base N    first seed of the sweep (seeds are seed-base + 0..N-1);
                    default 1000. Use a different base to re-sample independently
   --max-sec N      per-run simulated time cap passed to sim(); default 1200
-  --wait-sec N     how long to wait for window.__wordfall.version === 'M6';
+  --wait-sec N     how long to wait for window.__wordfall.version === 'M7';
                    default 900 (15 min), retrying every 20 s
   --json           print only the machine-readable JSON result on stdout
   -h, --help       show this help
@@ -143,11 +143,11 @@ function median(values) {
 }
 
 /**
- * Open the game and wait until window.__wordfall.version === 'M6'.
+ * Open the game and wait until window.__wordfall.version === 'M7'.
  * Each attempt gets a fresh browser context so a concurrently rewritten
  * game.js / index.html / words.js is re-read from disk.
  */
-async function waitForM6(browser) {
+async function waitForM7(browser) {
   const deadline = Date.now() + opts.waitSec * 1000;
   let last = 'window.__wordfall missing';
   for (let attempt = 1; ; attempt++) {
@@ -162,8 +162,8 @@ async function waitForM6(browser) {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M6') {
-      say(`[bot] ${INDEX_URL} -> game.js version M6`);
+    if (version === 'M7') {
+      say(`[bot] ${INDEX_URL} -> game.js version M7`);
       return { context, page };
     }
     if (version) last = `version=${JSON.stringify(version)}`;
@@ -172,7 +172,7 @@ async function waitForM6(browser) {
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
       throw new Error(
-        `game.js never exposed window.__wordfall.version === 'M6' within ${opts.waitSec}s ` +
+        `game.js never exposed window.__wordfall.version === 'M7' within ${opts.waitSec}s ` +
         `(last: ${last}). The Lead may still be rewriting game.js; rerun with --wait-sec 900 or wait for the ready ping.`
       );
     }
@@ -387,7 +387,7 @@ let exitCode = 1;
 try {
   say('[bot] launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const { page } = await waitForM6(browser);
+  const { page } = await waitForM7(browser);
   const contractErrorsForThisRun = [];
 
   // A hung sim should not hang the whole script; closing the browser in the
@@ -409,7 +409,7 @@ try {
   const assertions = evaluateAssertions(combos, contractErrorsForThisRun);
   payload = {
     pass: assertions.every((a) => a.skipped || a.pass),
-    version: 'M6',
+    version: 'M7',
     config: { seeds: opts.seeds, seedBase: opts.seedBase, wpm: opts.wpm, modes: MODES, maxSec: opts.maxSec },
     combos,
     assertions,

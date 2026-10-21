@@ -2,10 +2,11 @@
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1–M6 implemented**, shipped as v1.1, presented as a Windows 95-era desktop
+Status: **M1–M7 implemented**, shipped as v1.2, presented as a Windows 95-era desktop
 application (browser and native Windows build), plus the Relay 12 background and curve
-smoothing in §11. M5 numbers, tuning notes and deviations are in §9; the M6 additions and
-their measured numbers are in §10.
+smoothing in §11 and the M7 impact/draft-balance pass in §12. M5 numbers, tuning notes and
+deviations are in §9; the M6 additions and their measured numbers are in §10; M7 is in §12,
+with the measured card-power evidence in [BALANCE-LAB.md](BALANCE-LAB.md).
 
 ## 1. Pillar
 
@@ -82,13 +83,16 @@ flowchart LR
 ## 3. Scoring
 
 ```
-points = letters x (10 + ledger) x comboMult x heatMult
+points = letters x (10 + ledger) x comboMult x heatMult x Greed x Longshot x Drought x Bargain
 comboMult = 1 + 0.05 x min(combo, 20)      // unchanged, max 2.0x
 heatMult  = 1 + 0.25 x heat                // heat = number of Hexes held (+ tier II counts twice)
 ```
 
 - Combo carries through the draft pause (resolves Q2).
 - Combo resets on a wrong key or a word hitting the line. Word progress is kept after a wrong key (M1 rule, revisit in M5).
+- M7 economies: Greed ×1.4 (tier II ×1.7), Longshot ×2 on 7+ letter words, Drought ×0.9
+  (tier II ×0.85) in exchange for slower spawns, Bargain ×2 with Skip paying nothing.
+  Close-call clears and combo milestones are presentation only — they never change score.
 
 ## 4. Mechanical primitives
 
@@ -101,6 +105,7 @@ Cards may only use these. If a card needs something new, add it here first.
 | **Heat** | Count of Hexes held. Feeds `heatMult`. Never goes down. |
 | **Target set** | The words you're allowed to type. Default: the lowest one. |
 | **Lock-on** | When the target set holds more than 1 word, the first correct letter locks onto one word (ties go to the lowest). The lock holds until that word is cleared. |
+| **Line save** | A once-per-run effect (Lifeline) that destroys the first word to reach the line instead of costing a Life. It does not clear a wave and keeps the combo. |
 | **Pressure** | See §2. |
 
 ## 5. Cards
@@ -108,13 +113,21 @@ Cards may only use these. If a card needs something new, add it here first.
 ### 5.1 Draft rules
 
 - 3 cards. Slot 1 = **Boon**, slot 2 = any type, slot 3 = **Hex or Gambit**. No duplicates within one draft.
-- **Reroll:** 1 per run. **Skip:** +50 x wave points.
-- Rarity: common 75% / rare 25%, rolled per slot.
-- Repeat pick: upgrades to tier II if the card has one. Otherwise the card leaves the pool after the first pick.
+- **Reroll:** 1 per run (Second Draft adds one). **Skip:** `150 x wave` points and +1 temporary
+  Shield for the following wave; it still counts as a draft (Pressure +4) and Bargain makes it pay 0.
+- Rarity is rolled per slot: **24% base + 1.2% per wave**, except slot 3 which starts at 30%,
+  capped at 45% for every slot. A rare roll with no eligible rare in the slot's lane falls
+  back to any eligible rare card (cross-lane fallback), so a rare roll always delivers a rare
+  while one exists. Slot 2 prefers a card type different from slot 1 70% of the time, so late
+  drafts do not become two Hex picks while the ANY slot still carries Boons (always
+  excluding them removed the Boon lane and starved runs; never excluding them made 60 WPM
+  random too hot).
+- Repeat pick: upgrades to tier II if the card has one. Otherwise the card leaves the pool after the first pick. Draft cards carry a NEW or UPGRADE tag.
 - Slot exhaustion: if every card of a slot's type is ineligible, that slot falls back to any other eligible card so the draft still shows three cards. If the whole pool is exhausted the slot is empty (only Skip is available).
 - Auto-clears (**Overclock**) score and count toward Pressure, but do not count toward a wave: a wave is exactly ten player clears.
+- Between waves the board holds for a 0.85 s "WAVE n CLEARED" beat (presentation only; headless `sim()` skips it so tuning runs keep exact timing).
 
-### 5.2 Card list (13)
+### 5.2 Card list (18)
 
 | Card | Type | Rarity | Effect | Tier II |
 | --- | --- | --- | --- | --- |
@@ -123,20 +136,36 @@ Cards may only use these. If a card needs something new, add it here first.
 | **Grace** | Boon | common | +1 Life | none |
 | **Steady Hand** | Boon | common | +1 Shield | +2 Shields |
 | **Slow Drift** | Boon | common | Fall speed x0.85 | x0.75 |
-| **Greed** | Gambit | common | Score x1.3, fall speed x1.1 | x1.6 / x1.2 |
-| **Longshot** | Gambit | rare | 7+ letter words score x2 and fall 20% faster | none |
-| **Ledger** | Gambit | common | +2 points per letter, word-length bucket counts as +8 Pressure | none |
+| **Lifeline** | Boon | rare | The first word to reach the line is destroyed instead of costing a Life (once per run; combo kept) | none |
+| **Rally** | Boon | common | Word length reads 10 less Pressure | 18 less |
+| **Greed** | Gambit | common | Score x1.4, fall speed x1.03 | x1.7 / x1.06 |
+| **Longshot** | Gambit | rare | 7+ letter words score x2 and fall 5% faster | none |
+| **Ledger** | Gambit | common | +2 points per letter | none |
+| **Drought** | Gambit | common | Spawn interval x1.15, score x0.9 | x1.20 / x0.85 |
+| **Bargain** | Gambit | rare | Score x2; Skip pays no points | none |
 | **Reverse** | Hex | common | Type the target word right to left | none |
 | **Tunnel** | Hex | common | Only the next 3 letters of the target (in typing order) are visible | Next 2 |
 | **Ghost** | Hex | common | Each cleared word leaves an inert echo in place for 3 s | none |
 | **Decoy** | Hex | rare | 1 in 8 spawns is a misspelled fake that drops 4.5× faster. While a fake is the lowest word, every key counts as a mistake. Fakes fall through the line harmlessly | 1 in 5 |
 | **Split** | Hex | common | Every 5th spawn also drops a free word. It is a real 3–5 letter word: it scores and counts toward the wave, blocks the words above it while it falls, and costs no life at the line. It spawns even when the queue is full (the Hex's cost) | Every 3rd spawn |
+| **Second Draft** | Hex | rare | +1 reroll for the run | none |
 
-**Split was promoted from the backlog in M6:** it is the fifth Hex and the 13th card, so
-the "all Hexes held" eligibility rule now covers all five. The free word carries
+**M6 promoted Split** as the fifth Hex and 13th card. The free word carries
 `word.harmless === true`, renders teal (`COL.splitWord = '#00a0a0'`) with a dotted marker
 above it (fakes are marked below), and is never a fake. Its cadence lives in
 `splitEvery()` (5th spawn at tier I, 3rd at tier II), not in `CFG`.
+
+**M7 draft-balance pass** added five cards and retuned three traps, all measured in
+[BALANCE-LAB.md](BALANCE-LAB.md): before the pass the marginal pick spread ran from
+Overclock I (+42 pp dawn) to Longshot (−18.5 pp), Greed II was a downgrade over Greed I, and
+a slot-3-only deck dawned 0% while slot 1 only dawned 100%. After the pass the spread is
+about +61 pp to −8 pp, slot-3-only decks reach ~21%, and the acceptance cells still hold.
+The changes: Greed's speed penalty ×1.10/×1.20 → ×1.03/×1.06 (score up to ×1.4/×1.7),
+Longshot's speed penalty 20% → 5%, Ledger's hidden +8 Pressure surcharge removed, Skip
+50 → 150 × wave plus a shield, wave-scaled rarity + cross-lane rare fallback + slot-2 lane
+diversity, and the five cards above (Lifeline and Rally add boon tiers; Drought is the
+first survival-positive Hex/Gambit lane card; Bargain and Second Draft widen slot 3's thin
+rare pool).
 
 ### 5.3 Card interactions (defined up front)
 
@@ -144,7 +173,10 @@ above it (fakes are marked below), and is never a fake. Its cadence lives in
 - **Reverse + Wide Scope:** lock-on uses the word's *first letter in typing order*.
 - **Decoy + Wide Scope:** a fake in the target set doesn't block if a real word in the set can be locked.
 - **Overclock + Decoy:** auto-clear skips fakes.
-- **Greed + Slow Drift:** speed multipliers multiply together.
+- **Greed + Slow Drift + Drought:** speed and spawn multipliers stack; Drought does not touch fall speed.
+- **Lifeline + Split:** a harmless Split word never reaches the "costs a Life" branch, so it cannot consume Lifeline.
+- **Rally + Ledger:** Rally subtracts from the word-length bucket only; Ledger no longer adds Pressure.
+- **Second Draft + Bargain + Skip:** Bargain zeroes the Skip payout but the +1 Shield still applies.
 
 ### 5.4 Eligibility filter (no dead picks)
 
@@ -154,11 +186,14 @@ above it (fakes are marked below), and is never a fake. Its cadence lives in
 | Wide Scope II | Wide Scope I is held |
 | Grace | lives held < 3 |
 | Steady Hand | shields held < 3 |
-| Any Hex | the player doesn't already hold all 5 |
+| Any Hex | the player doesn't already hold all 6 |
+| Any maxed card | the player has not already reached its `maxTier` |
 
 The Hex rule is generic: it reads the number of Hex cards in `CARD_LIST` (exported as
 `window.__wordfall.hexTotal`), so it stays correct as the pool grows — M6 added Split and
-the check moved from 4 to 5 without a hard-coded list.
+M7 added Second Draft, and the check moved from 4 to 6 without a hard-coded list. The
+sweeps in [BALANCE-LAB.md](BALANCE-LAB.md) show 0 dead drafts, 0 ineligible offers and no
+duplicate cards within a draft.
 
 ## 6. Decisions log
 
@@ -178,6 +213,10 @@ the check moved from 4 to 5 without a hard-coded list.
 | Lifetime records in localStorage, per machine | **New (M6)** — `wordfall.records`; no accounts, no network (§2.1) |
 | Runs carry a visible seed and can be retried | **New (M6)** — seed on pause/game-over/Dawn; Retry Seed replays it (§2.1) |
 | Sound setting persists across launches | **New (M6)** — `wordfall.settings` (§2.1) |
+| Impact layer: capped FX pools + adaptive budget | **New (M7)** — presentation never mutates rules and is skipped in `sim()`; 60fps verified under load (§12) |
+| Effects quality toggle, persisted | **New (M7)** — View → Effects: Full/Light; `wordfall.settings.fx` (§12) |
+| 18-card pool with wave-scaled draft rarity | **New (M7)** — measured in BALANCE-LAB.md; acceptance cells unchanged (§5, §12) |
+| Skip is a real choice (score + shield), still +4 Pressure | **New (M7)** — `150 × wave` points and +1 temporary Shield (§5.1) |
 
 ## 7. Milestones (with acceptance criteria)
 
@@ -188,13 +227,22 @@ the check moved from 4 to 5 without a hard-coded list.
 | **M4 Feel** | Hit-pause on clear, particles, combo pitch rise, near-miss shake, danger-line audio, card rise animation | Manual playtest checklist. 60 fps held with 12 words + Ghost echoes | **Done** |
 | **M5 Tuning** | Headless bot at 40/60/80 WPM with random picks, plus a word pool of 400+ words | 60 WPM bot, no cards: dies at wave 5 to 7. 60 WPM with picks: reaches Dawn in 30 to 50% of runs. 80 WPM: over 70% | **Done** |
 | **M6 Pause + records + run identity + Split** | `paused` phase and dialog, lifetime Records, WPM/accuracy/run-time/seed stats on game-over and Dawn, Retry Seed, settings persistence, 13th card Split | Smoke test: pause freezes board and clock and resumes via Esc/Enter; records load and save once per finished run; `reset(seed)` is deterministic; the result dialogs carry WPM/accuracy/time/seed; Retry Seed replays the seed; Split spawns a real harmless 3–5 letter word on its cadence and is the fifth Hex. Bot: all M5 cells still pass at 400 seeds | **Done** |
+| **M7 Impact + draft balance + 18 cards** | Capped canvas effect layer (particles, glyph shards, rings, pop-ups, milestones, wave-clear beat, ambient motion, adaptive budget), per-word typing/clear impact, Effects Full/Light toggle, status combo panel + CSS FX overlay; 5 new cards, trap retune, wave-scaled rarity, cross-lane rare fallback, slot-2 lane diversity, Skip rework | Smoke test: effect pools fire on a clear, milestone and wave-clear beat, FX toggle + persistence + CSS hooks, full-board 60fps check; every card asserted; bot: 60 skip dies 100% median 7, 60 random Dawn 30–50%, 80 random > 70%; balance-lab spread and no dead drafts | **Done** |
 
 ## 8. Backlog / open questions
 
 1. **Split:** **Resolved in M6** — promoted as the 13th card, Hex / common, tier I every
    5th spawn, tier II every 3rd (§5.2). The measured impact is in §10.
-2. **Meta progression** (unlocking cards between runs): out of scope until after M5.
+2. **Meta progression** (unlocking cards between runs): out of scope.
 3. **Word pool:** **Resolved in M5** — 459 words in `words.js`, 38 of them 10–11 letters.
+4. **80 WPM bot cell is not discriminative** (99.8% vs a >70% bar). Candidates for a later
+   pass: tighten to >85% or add a 70 WPM random cell (30–60%), and/or make the bot's
+   draft-quality invariant (slot-1-only vs slot-3-only decks) a first-class acceptance cell.
+5. **Bot is blind to reading cost and mistakes**: Reverse/Tunnel/Ghost measure ~0 delta and
+   Steady Hand's shields measure 0 because the bot never mistypes. Human playtest is still
+   the only signal for those cards ([BALANCE-LAB.md](BALANCE-LAB.md) §8).
+6. **Overclock is still the strongest card** (+61 pp marginal in M7). It is the first lever
+   if the 60 WPM random cell ever runs hot (nerf cadence 5th→6th / 4th→5th).
 
 ## 9. Implementation notes (M5)
 
@@ -364,3 +412,107 @@ The default 100-seed run gives median 7, 32.0% and 96.0%. The 80 WPM winning run
 populated. The debug hook stays `version: 'M6'` so the existing bot/smoke harnesses keep
 working; this is a tuning/presentation update, not a new numbered milestone.
 
+
+## 12. Implementation notes (M7 / v1.2)
+
+M7 is the impact + draft-balance release. Nothing about the rules the bot measures changed
+outside the cards and the draft rules themselves; the effect layer is strictly presentation
+and is a no-op inside the headless simulator.
+
+### 12.1 Impact and effect layer
+
+The playfield renderer grew a presentation-only effect system driven by four capped pools:
+`state.particles` (square sparks, ≤520), `state.shards` (one glyph per cleared letter, ≤140),
+`state.rings` (square shockwaves, ≤18) and `state.popups` (floating score/combo/callout
+text, ≤22). `burst()`, `shatter()`, `ring()`, `popup()` and `milestone()` are the only
+emitters, and each starts with `if (state.simulating) return;`. Because `render()` is never
+called inside `sim()`, and every emitter is guarded, the seeded bot stream is untouched by
+the effect layer.
+
+**Typing impact.** Each committed letter records `word.typedAt[pos]`; the renderer pops the
+glyph (scale 1.55→1.0 over 160 ms, white flash on the first frames) and emits one spark.
+Falling words leave two ghost trails whose alpha scales with current fall speed, materialise
+out of the signal during their first 240 ms, and the target paints an animated progress bar
+plus corner brackets and a dashed box whose dash offset animates.
+
+**Clear impact.** A completed word shatters every letter as a spinning glyph shard, adds a
+gold square ring, a score pop-up and a combo-multiplier pop-up, and scales the freeze-frame
+(`hitPause`), shake, zoom punch and gold flash by how close the word was to the line. A clear
+inside the bottom ~38% of the field additionally shows a CLOSE CALL callout. There is a
+combo-milestone burst every 10 (banner, ring, flash, jingle). A lost life shatters the word
+red and pops "-1 LIFE". `state.waveBanner` (previously dead state) is now rendered as the
+"WAVE n" title card at wave start, and a wave end plays a 0.85 s "WAVE n CLEARED" beat
+(`state.waveClearT`, board frozen, `typeLetter()` inert) before the draft opens.
+
+**Ambient motion.** The signal-field bars breathe and their one-pixel caps flicker, a slow
+scan line sweeps the field, rare interference bands cross it, stars twinkle and a signal
+flare crosses the sky every ~11 s. All time-derived (`state.t`), never rng-derived, so the
+renderer cannot perturb the seeded stream.
+
+**Frame budget and adaptive quality.** `CFG.fxMaxParticles/fxMaxShards/fxMaxRings/fxMaxPopups`
+cap every pool. `frame()` measures real frame time only while the board is live; if the
+90-frame average exceeds 21.5 ms the internal `fxPressure` emitter multiplier drops by 0.2
+(floor 0.45), and it recovers when the average is below 17.8 ms. The player-facing
+**View → Effects: Full/Light** setting multiplies counts by 0.35, disables ambient motion and
+persists in `wordfall.settings.fx`; `prefers-reduced-motion` selects Light on first launch.
+Measured in headless Chrome with a full board and continuous clears: 60 fps / ~16.7 ms
+average, no frame over 25 ms; light mode is never slower.
+
+**CSS shell.** An `#fxOverlay` layer above the canvas and below the dialogs
+(pointer-events:none) carries scanlines, vignette and a combo/danger glow. `game.js` sets
+`--fx-combo`, `--fx-danger`, `--fx-heat`, `--fx-lives`, `--fx-wave` on `#app` and toggles
+`phase-*`, `fx-combo-hot`, `fx-danger`, `fx-low-life`, `fx-light` and the transient
+`fx-milestone` class on `<body>`; `style.css` owns every visual. All loop animations are
+transform/opacity only.
+
+### 12.2 Draft balance pass
+
+Evidence: [BALANCE-LAB.md](BALANCE-LAB.md) (13-card baseline, 400 seeds/cell, per-card power
+paired by seed, 2,200 seeded drafts, draft-policy proxies). Headline findings: slot 3 was a
+survival black hole (slot-3-only decks dawn 0%, slot-1-only 100%), the card spread ran
++42 pp (Overclock I) to −18.5 pp (Longshot), Greed II was worse than Greed I, Ledger carried
+a hidden +8 Pressure tax, Skip was dominated, and late drafts decayed because the 9 boon
+tiers were exhausted by wave ~9.
+
+Shipped changes:
+
+- **Five new cards** (§5.2): Lifeline, Rally, Drought, Bargain, Second Draft (13→18 cards,
+  Hexes 5→6).
+- **Trap retune**: Greed speed ×1.10/×1.20 → ×1.03/×1.06 with score ×1.4/×1.7; Longshot
+  speed penalty 20%→5%; Ledger's +8 Pressure surcharge removed (score-only card now).
+- **Skip**: `50 × wave` → `150 × wave` points and +1 temporary Shield for the following
+  wave; still +4 Pressure. Damage-free bot cells are unchanged (the bot never mistypes, so
+  shields are invisible to it; the points are score-only).
+- **Draft rules**: rare roll = 24% + 1.2%/wave (slot 3 base 30%), cap 45%; cross-lane rare
+  fallback; slot 2 prefers a different type from slot 1 70% of the time. Measured effect:
+  slot-3 rare rate 21.4% → 36.6% (late bands now reach 38–47%), slot 2 still offers Boons
+  (~12% of its offers), 0 dead drafts / 0 ineligible offers, no-boon drafts 0%.
+
+Measured on the shipped M7 build (seed block 1000–1399; independent block base 5000 in
+parentheses):
+
+| Cell | Result | Target | Status |
+| --- | --- | --- | --- |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.20 (median 7) | dies at wave 5–7 | PASS |
+| 60 WPM, random picks | Dawn **43.3%** (173/400); **42.3%** (127/300 on base 5000) | 30–50% | PASS |
+| 80 WPM, random picks | Dawn **99.8%** (399/400); **100%** (300/300) | > 70% | PASS |
+
+Card spread after the pass (marginal Δdawn at 60 WPM, paired, final-build measurement):
+Overclock II +59, Overclock I +56, Slow Drift II +50, Slow Drift I +25, Decoy +18/+19,
+Drought +14/+24, Rally +2/+19, Lifeline +12, Bargain/Second Draft +1 … Greed II −8,
+Greed I −7, Longshot −5. The −18.5 pp trap is gone and every remaining negative card is a
+mild tempo cost (<0.1 wave isolated survival impact). Draft policies in the same build:
+slot-1-only decks dawn 100%, slot-3-only 21% (was 0%), random 69%, skip 0% — the slot-3
+hole is closed but still the weaker lane by design.
+
+### 12.3 Notes and deviations
+
+- The effect layer adds no new assets, no build step and no new dependencies. It is all
+  canvas primitives + CSS, consistent with the 16-colour/2px-bevel rules elsewhere.
+- `pulseStatus()` originally forced a synchronous layout via `void el.offsetWidth` even
+  during `sim()`, making tuning sweeps ~25× slower. It now returns immediately when
+  `state.simulating`; this is a test-speed fix only (no rule reads it).
+- `window.__wordfall.version` is now `'M7'`; `CARDS` is 18, `hexTotal` 6. The smoke and bot
+  harnesses were updated for the new milestone, and the debug hook gained `fxState()`,
+  `toggleEffects()`, `perf()`, `scoreMult()`, `spawnInterval()` and `rerollsLeft()`.
+- The 80 WPM acceptance cell is not discriminative (100% vs a >70% bar); see §8 backlog.

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
  * Wordfall end-to-end smoke test (M1 core loop + M2 draft/pressure + M3 cards
- * + M4 screenshots + M5 tuning hooks + M6 pause/records/stats/seeds/Split).
+ * + M4 screenshots + M5 tuning hooks + M6 pause/records/stats/seeds/Split
+ * + M7 effects/juice, FX toggle persistence, wave-clear beat and frame-time).
  * Drives the real game in headless Chrome through the `window.__wordfall`
  * debug hook; every assertion runs against live state.
  *
  * Run from the wordfall/ folder:
  *   node tools/smoke.mjs
- *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M6" window
+ *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M7" window
  *
  * Prints a JSON summary on stdout; progress goes to stderr. Screenshots land in
  * shots/. Exits 0 only if every check passes and the page logged no errors.
@@ -67,7 +68,7 @@ function parseArgs(argv) {
         process.exit(2);
       }
     } else if (arg === '-h' || arg === '--help') {
-      console.log('Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === \'M6\' (default 900).');
+      console.log('Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === \'M7\' (default 900).');
       process.exit(0);
     } else {
       console.error(`smoke: unknown argument: ${arg}`);
@@ -80,7 +81,7 @@ const opts = parseArgs(process.argv);
 
 // ─── Page helpers ───────────────────────────────────────────────────────────
 
-async function waitForM6() {
+async function waitForM7() {
   const deadline = Date.now() + opts.waitSec * 1000;
   let last = 'window.__wordfall missing';
   for (;;) {
@@ -95,7 +96,7 @@ async function waitForM6() {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M6') {
+    if (version === 'M7') {
       page = candidate;
       return;
     }
@@ -103,7 +104,7 @@ async function waitForM6() {
     else if (pageErrors.length) last = `no hook; pageerror: ${pageErrors[0]}`;
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
-      throw new Error(`game.js never exposed window.__wordfall.version === 'M6' within ${opts.waitSec}s (last: ${last})`);
+      throw new Error(`game.js never exposed window.__wordfall.version === 'M7' within ${opts.waitSec}s (last: ${last})`);
     }
     log(`game not ready (${last}); retrying in ${RETRY_WAIT_MS / 1000}s`);
     await sleep(RETRY_WAIT_MS);
@@ -141,6 +142,16 @@ async function stateInfo() {
       words: s.words.map((x) => ({ id: x.id, text: x.text, x: x.x, y: x.y, progress: x.progress, fake: !!x.fake })),
       echoes: s.echoes.map((e) => ({ text: e.text, ttl: e.ttl, t: e.t })),
       particles: s.particles.length,
+      // M7: wave-complete beat + effect layer snapshot
+      waveClearT: s.waveClearT,
+      waveClearWave: s.waveClearWave,
+      waveBanner: s.waveBanner,
+      milestoneT: s.milestoneT,
+      fx: (() => {
+        const f = w.fxState();
+        return { quality: f.quality, particles: f.particles, shards: f.shards, rings: f.rings, popups: f.popups, milestone: f.milestone, danger: f.danger, cssCombos: f.cssCombos };
+      })(),
+      settingsFx: w.settings.fx,
       best: s.best,
       bestSaved: (() => { try { return Number(localStorage.getItem('wordfall.best') || 0); } catch (e) { return null; } })(),
       // M6: run identity + lifetime records
@@ -183,11 +194,50 @@ async function domInfo() {
         exists: true,
       };
     };
+    const cs = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el) : null;
+    };
+    const body = document.body;
+    const fxOverlay = document.getElementById('fxOverlay');
+    const fxCs = fxOverlay ? getComputedStyle(fxOverlay) : null;
+    const modalCs = cs('#modalLayer');
+    const app = document.getElementById('app');
+    const draftGrid = document.getElementById('draftGrid');
+    const draftCards = draftGrid ? Array.from(draftGrid.children).map((el) => ({
+      classes: Array.from(el.classList),
+      badge: el.querySelector('.badge') ? String(el.querySelector('.badge').textContent || '').trim() : null,
+      rare: !!el.querySelector('.rare'),
+      tag: el.querySelector('.tag-new, .tag-up') ? String(el.querySelector('.tag-new, .tag-up').textContent || '').trim() : null,
+      tagClass: el.querySelector('.tag-new, .tag-up') ? el.querySelector('.tag-new, .tag-up').className : null,
+      name: el.querySelector('.draft-name') ? String(el.querySelector('.draft-name').textContent || '').trim() : null,
+      desc: el.querySelector('.draft-desc') ? String(el.querySelector('.draft-desc').textContent || '').trim() : null,
+    })) : null;
     return {
       phase: window.__wordfall.state.phase,
       statusMain: txt('statusMain'),
+      statusCombo: txt('statusCombo'),
+      statusShields: txt('statusShields'),
       titleText: txt('titleText'),
       taskText: txt('taskText'),
+      bodyClasses: Array.from(body.classList),
+      fxOverlay: fxOverlay ? {
+        exists: true,
+        pointerEvents: fxCs.pointerEvents,
+        zIndex: fxCs.zIndex,
+        display: fxCs.display,
+        opacity: fxCs.opacity,
+      } : { exists: false },
+      modalZIndex: modalCs ? modalCs.zIndex : null,
+      appVars: app ? {
+        combo: app.style.getPropertyValue('--fx-combo'),
+        danger: app.style.getPropertyValue('--fx-danger'),
+        heat: app.style.getPropertyValue('--fx-heat'),
+        lives: app.style.getPropertyValue('--fx-lives'),
+        wave: app.style.getPropertyValue('--fx-wave'),
+      } : null,
+      menuEffects: menu('menuEffects'),
+      draftCards,
       dlgPause: dialog('dlgPause'),
       dlgRecords: dialog('dlgRecords'),
       dlgControls: dialog('dlgControls'),
@@ -219,11 +269,11 @@ async function domInfo() {
   });
 }
 
-/** Reload the page in the same context (localStorage survives) and wait for M6 again. */
+/** Reload the page in the same context (localStorage survives) and wait for M7 again. */
 async function reloadGame() {
   await page.reload({ waitUntil: 'load', timeout: 20000 });
   await page.waitForFunction(
-    () => window.__wordfall && window.__wordfall.version === 'M6',
+    () => window.__wordfall && window.__wordfall.version === 'M7',
     null,
     { timeout: 20000 }
   );
@@ -270,7 +320,7 @@ async function clearWithHook(text, extra = {}) {
       pressure: w.pressure(),
       comboMult: w.comboMultiplier(),
       heatMult: w.heatMult(),
-      scoreMult: w.has('greed') ? (w.heldTier('greed') >= 2 ? 1.6 : 1.3) : 1,
+      scoreMult: w.has('greed') ? (w.heldTier('greed') >= 2 ? 1.7 : 1.4) : 1,
     };
     const chars = [];
     let guard = 0;
@@ -302,7 +352,7 @@ async function clearReal(text) {
   return wf(() => {
     const w = window.__wordfall;
     const s = w.state;
-    return { phase: s.phase, cleared: s.cleared, combo: s.combo, score: s.score, words: s.words.length };
+    return { phase: s.phase, cleared: s.cleared, combo: s.combo, score: s.score, words: s.words.length, waveClearT: s.waveClearT, waveCleared: s.waveCleared };
   });
 }
 
@@ -317,20 +367,105 @@ const scoreFormula = (letters, run, opts2 = {}) => {
   return Math.round(letters * (10 + lettersBonus) * mult);
 };
 
+/**
+ * Fill the board and run N rAF frames while clearing a word every frame, then
+ * report frame-interval stats and the peak effect-pool sizes. The first 8
+ * frames are warm-up and are ignored (Chrome's first paint is not steady).
+ */
+async function measureFxLoad(frames) {
+  return wf(async (frames) => {
+    const w = window.__wordfall;
+    const s = w.state;
+    w.reset(5150);
+    s.lives = 99;
+    s.cleared = 400;
+    s.wave = 7;
+    s.waveCleared = 0;
+    s.words.length = 0;
+    const texts = ['lantern', 'ember', 'drift', 'hollow', 'tunnel', 'signal'];
+    for (let i = 0; i < 6; i++) w.spawnWord(texts[i], { y: 60 + i * 85 });
+    return await new Promise((resolve) => {
+      const deltas = [];
+      const maxPools = { particles: 0, shards: 0, rings: 0, popups: 0 };
+      let seen = 0;
+      let clears = 0;
+      let effectsSeen = 0;
+      let last = performance.now();
+      const tick = (now) => {
+        const dt = now - last;
+        last = now;
+        // Keep the swarm alive: full lives and no wave end may interrupt it.
+        s.lives = 99;
+        s.waveCleared = 0;
+        s.waveClearT = 0;
+        if (s.phase !== 'playing') s.phase = 'playing';
+        if (seen >= 8) {
+          const target = w.targetWord();
+          if (target && !target.fake) {
+            let guard = 0;
+            while (guard++ < 24 && s.words.indexOf(target) >= 0) {
+              const ch = w.nextChar(target);
+              if (ch == null) break;
+              w.typeLetter(ch);
+            }
+            clears += 1;
+          }
+          if (s.words.length < 6) w.spawnWord(texts[(clears + 1) % texts.length], { y: 40 + ((clears * 37) % 240) });
+          s.waveCleared = 0;
+        }
+        const fs = w.fxState();
+        maxPools.particles = Math.max(maxPools.particles, fs.particles);
+        maxPools.shards = Math.max(maxPools.shards, fs.shards);
+        maxPools.rings = Math.max(maxPools.rings, fs.rings);
+        maxPools.popups = Math.max(maxPools.popups, fs.popups);
+        if (fs.particles + fs.shards + fs.rings + fs.popups > 0) effectsSeen += 1;
+        if (seen >= 8) deltas.push(dt);
+        seen += 1;
+        if (seen >= frames + 8) {
+          const total = deltas.reduce((a, b) => a + b, 0);
+          const sorted = deltas.slice().sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          resolve({
+            frames: deltas.length,
+            avgMs: total / deltas.length,
+            medianMs: sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2,
+            p95Ms: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))],
+            maxMs: sorted[sorted.length - 1],
+            longFrames: deltas.filter((d) => d > 33).length,
+            clears,
+            effectsSeen,
+            maxPools,
+            caps: {
+              particles: w.CFG.fxMaxParticles,
+              shards: w.CFG.fxMaxShards,
+              rings: w.CFG.fxMaxRings,
+              popups: w.CFG.fxMaxPopups,
+            },
+            perf: w.perf(),
+          });
+        } else {
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
+    });
+  }, frames);
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 let summary = null;
 try {
   log('launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  log(`waiting for ${INDEX_URL} to expose version M6…`);
-  await waitForM6();
-  log('game.js M6 is live — running checks');
+  log(`waiting for ${INDEX_URL} to expose version M7…`);
+  await waitForM7();
+  log('game.js M7 is live — running checks');
 
   page.on('pageerror', (e) => errors.push('pageerror: ' + String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
   const version = await wf(() => window.__wordfall.version);
-  check('contract: window.__wordfall.version === M6', version === 'M6', version, "'M6'");
+  check('contract: window.__wordfall.version === M7', version === 'M7', version, "'M7'");
 
   // ═══ M1: core loop ═════════════════════════════════════════════════════
   await section('M1 core loop', async () => {
@@ -383,6 +518,16 @@ try {
       'score increases and >= 3 cleared'
     );
     check('M1: still playing after three clears', afterTyping.phase === 'playing', afterTyping.phase, "'playing'");
+    // Stage a readable board for the mid-run shot (the loop clears its own
+    // spawns, so the board can be empty; the spawn-materialise flicker needs
+    // ~0.25 s to finish).
+    await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      s.words.length = 0;
+      [['audio', 160], ['signal', 300], ['relay', 430], ['lantern', 540]].forEach(([text, y]) => w.spawnWord(text, { y }));
+    });
+    await sleep(420);
     await page.screenshot({ path: shot('03-mid-run.png') });
 
     // Staged mid-run showcase (several words + partial progress).
@@ -394,7 +539,7 @@ try {
       const target = w.targetWord();
       if (target) target.progress = Math.min(2, target.text.length - 1);
     });
-    await sleep(120);
+    await sleep(450); // spawn-materialise flicker is intentional; wait it out for the showcase
     await page.screenshot({ path: shot('05-showcase.png') });
 
     // One word on the danger line ends the run (fresh run = 1 life).
@@ -442,6 +587,49 @@ try {
     for (let i = 0; i < 14 && st.phase === 'playing' && st.cleared < 10; i++) {
       st = await clearReal(pool[i % pool.length]);
     }
+    // M7: the 10th clear starts a 0.85 s celebration; the draft opens after it.
+    const beat = await stateInfo();
+    check(
+      'M7: clearing 10 words starts the wave-clear celebration (draft deferred)',
+      beat.phase === 'playing' && beat.cleared === 10 && beat.waveClearT > 0,
+      { phase: beat.phase, cleared: beat.cleared, waveClearT: beat.waveClearT, waveCleared: beat.waveCleared },
+      "phase 'playing' and waveClearT > 0 before the draft"
+    );
+    await page.screenshot({ path: shot('11-wave-clear.png') }); // M7: celebration beat
+    const inertBeat = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const before = { keys: s.keys, cleared: s.cleared, combo: s.combo };
+      w.typeLetter('x');
+      return { before, after: { keys: s.keys, cleared: s.cleared, combo: s.combo, waveClearT: s.waveClearT } };
+    });
+    check(
+      'M7: typeLetter() is inert during the wave-clear beat',
+      inertBeat.after.keys === inertBeat.before.keys &&
+      inertBeat.after.cleared === inertBeat.before.cleared &&
+      inertBeat.after.combo === inertBeat.before.combo,
+      inertBeat,
+      'no keys / clears / combo change'
+    );
+    const beatYsA = await wf(() => window.__wordfall.state.words.map((x) => x.y));
+    await sleep(200);
+    const beatYsB = await wf(() => window.__wordfall.state.words.map((x) => x.y));
+    check(
+      'M7: the board hangs frozen during the wave-clear beat',
+      JSON.stringify(beatYsA) === JSON.stringify(beatYsB),
+      { before: beatYsA, after: beatYsB, reactivated: false },
+      'word positions unchanged during the beat'
+    );
+    const draftWaitStart = Date.now();
+    await page.waitForFunction(() => window.__wordfall.state.phase === 'draft', null, { timeout: 3000 });
+    const draftWaitMs = Date.now() - draftWaitStart;
+    check(
+      'M7: the draft opens after the ~0.85 s wave-clear celebration',
+      draftWaitMs <= 2500,
+      { waitedMs: draftWaitMs },
+      'draft within 2.5 s of the beat checks (deferred from the 10th clear)'
+    );
+    await sleep(80);
     const draft = await stateInfo();
     check(
       'M2: clearing 10 words enters the draft',
@@ -466,6 +654,28 @@ try {
       "starts with 'RELAY 12', non-empty"
     );
     notes.draftOffer = draft.offer;
+
+    // M7 draft cards: type badges, NEW/UPGRADE tags and the RARE outline marker.
+    const draftDom = await domInfo();
+    const draftCards = draftDom.draftCards || [];
+    const offerSlotTypes = (draft.offer || []).map((c) => (c ? c.type : null));
+    const rareOffers = (draft.offer || []).filter((c) => c && c.rarity === 'rare').length;
+    check(
+      'M7 draft: three cards render with a lane badge and a NEW tag',
+      draftCards.length === 3 &&
+      draftCards.every((c) => c.badge && (c.badge === 'BOON' || c.badge === 'HEX' || c.badge === 'GAMBIT')) &&
+      draftCards.every((c) => c.tag === 'NEW' && /tag-new/.test(c.tagClass || '')) &&
+      offerSlotTypes[0] === 'boon' && offerSlotTypes[2] !== 'boon' && !!offerSlotTypes[2],
+      { cards: draftCards, offerSlotTypes },
+      '3 cards, badges, all NEW (tier I offers), slot 1 Boon, slot 3 Hex/Gambit'
+    );
+    const renderedRare = draftCards.filter((c) => c.rare).length;
+    check(
+      'M7 draft: rare offers carry the RARE outline marker',
+      renderedRare === rareOffers,
+      { renderedRare, rareOffers, cards: draftCards.map((c) => ({ name: c.name, rare: c.rare, tag: c.tag })) },
+      'RARE marker on exactly the rare offers'
+    );
 
     // Board freezes while drafting.
     const frozenA = await wf(() => window.__wordfall.state.words.map((w) => w.y));
@@ -515,26 +725,55 @@ try {
     check('M2: picking raises pressure by exactly 4', picked.after.pressure - picked.before.pressure === 4, { before: picked.before.pressure, after: picked.after.pressure, draftsTaken: [picked.before.draftsTaken, picked.after.draftsTaken] }, '+4');
     check('M2: picked card is in the deck', picked.pickedId !== null && picked.after.hasCard && picked.after.heldTier === 1 && picked.deck[picked.pickedId] === 1, { pickedId: picked.pickedId, heldTier: picked.after.heldTier, deck: picked.deck }, 'held at tier 1');
 
-    // Skip still counts as a draft and pays 50 x wave.
+    // Skip still counts as a draft, pays 150 x wave and grants +1 temporary Shield.
     await resetRun();
     const skipped = await wf(() => {
       const w = window.__wordfall;
       const s = w.state;
       w.beginDraft();
-      const before = { phase: s.phase, pressure: w.pressure(), draftsTaken: s.draftsTaken, score: s.score, wave: s.wave, deck: Object.assign({}, s.deck), skipValue: w.CFG.skipPointsPerWave };
+      const before = {
+        phase: s.phase, pressure: w.pressure(), draftsTaken: s.draftsTaken, score: s.score,
+        wave: s.wave, deck: Object.assign({}, s.deck), skipValue: w.CFG.skipPointsPerWave,
+        shieldMax: s.shieldMax, shields: s.shields,
+      };
       const ok = w.skip();
-      return { before, ok, after: { phase: s.phase, pressure: w.pressure(), draftsTaken: s.draftsTaken, score: s.score, wave: s.wave, deck: Object.assign({}, s.deck) } };
+      return {
+        before, ok,
+        after: {
+          phase: s.phase, pressure: w.pressure(), draftsTaken: s.draftsTaken, score: s.score,
+          wave: s.wave, deck: Object.assign({}, s.deck), shieldMax: s.shieldMax, shields: s.shields,
+          waveBanner: s.waveBanner,
+        },
+      };
     });
     check('M2: beginDraft() forces the draft open', skipped.before.phase === 'draft', skipped.before.phase, "'draft'");
     check('M2: skip resumes play and takes the draft', skipped.ok === true && skipped.after.phase === 'playing' && skipped.after.draftsTaken === skipped.before.draftsTaken + 1, skipped, 'skip() true, phase playing, draftsTaken +1');
-    check('M2: skip raises pressure by exactly 4', skipped.after.pressure - skipped.before.pressure === 4, { before: skipped.before.pressure, after: skipped.after.pressure }, '+4');
+    check('M2: skip raises pressure by exactly 4', skipped.after.pressure - skipped.before.pressure === 4, { before: skipped.before.pressure, after: skipped.before.pressure }, '+4');
     check(
-      'M2: skip pays 50 x wave points',
+      'M2: skip pays 150 x wave points',
+      skipped.before.skipValue === 150 &&
       skipped.after.score - skipped.before.score === skipped.before.skipValue * skipped.before.wave,
-      { delta: skipped.after.score - skipped.before.score, expected: skipped.before.skipValue * skipped.before.wave, wave: skipped.before.wave },
-      '50 x wave'
+      { delta: skipped.after.score - skipped.before.score, expected: skipped.before.skipValue * skipped.before.wave, wave: skipped.before.wave, skipValue: skipped.before.skipValue },
+      '150 x wave'
+    );
+    check(
+      'M7: skip grants +1 temporary Shield for the next wave',
+      skipped.after.shields === skipped.before.shields + 1 &&
+      skipped.after.shields <= 3 &&
+      skipped.after.shieldMax === skipped.before.shieldMax,
+      { before: { shields: skipped.before.shields, shieldMax: skipped.before.shieldMax }, after: { shields: skipped.after.shields, shieldMax: skipped.after.shieldMax } },
+      'shields +1 (above shieldMax), shieldMax unchanged'
     );
     check('M2: skip leaves the deck empty', Object.keys(skipped.after.deck).length === 0, skipped.after.deck, '{}');
+    check('M7: skip starts the next wave and arms the WAVE banner', skipped.after.wave === skipped.before.wave + 1 && skipped.after.waveBanner > 0, { before: skipped.before.wave, after: skipped.after.wave, waveBanner: skipped.after.waveBanner }, 'wave +1, waveBanner > 0');
+    await sleep(80);
+    const skipDom = await domInfo();
+    check(
+      'M7: the HUD shows the over-max temporary Shield (Shields: 1/1)',
+      skipDom.statusShields === 'Shields: 1/1',
+      { statusShields: skipDom.statusShields, shields: skipped.after.shields, shieldMax: skipped.after.shieldMax },
+      '"Shields: 1/1"'
+    );
 
     // Reroll: costs the single reroll, does not take a draft.
     await resetRun();
@@ -590,7 +829,15 @@ try {
     'Ghost': { id: 'ghost', type: 'hex', rarity: 'common', maxTier: 1 },
     'Decoy': { id: 'decoy', type: 'hex', rarity: 'rare', maxTier: 2 },
     'Split': { id: 'split', type: 'hex', rarity: 'common', maxTier: 2 },
+    // M7 additions (18 cards total).
+    'Lifeline': { id: 'lifeline', type: 'boon', rarity: 'rare', maxTier: 1 },
+    'Rally': { id: 'rally', type: 'boon', rarity: 'common', maxTier: 2 },
+    'Drought': { id: 'drought', type: 'gambit', rarity: 'common', maxTier: 2 },
+    'Bargain': { id: 'bargain', type: 'gambit', rarity: 'rare', maxTier: 1 },
+    'Second Draft': { id: 'second-draft', type: 'hex', rarity: 'rare', maxTier: 1 },
   };
+  const CARD_COUNT = 18;
+  const HEX_COUNT = 6;
   const C = {}; // card name -> id
   const catalogue = await wf(() => ({
     cards: window.__wordfall.CARDS.map((c) => ({
@@ -600,7 +847,7 @@ try {
   }));
   {
     const problems = [];
-    if (catalogue.cards.length !== 13) problems.push(`expected 13 cards, got ${catalogue.cards.length}`);
+    if (catalogue.cards.length !== CARD_COUNT) problems.push(`expected ${CARD_COUNT} cards, got ${catalogue.cards.length}`);
     const ids = catalogue.cards.map((c) => c.id);
     if (new Set(ids).size !== ids.length) problems.push('duplicate card ids');
     for (const [name, expected] of Object.entries(EXPECTED_CARDS)) {
@@ -610,22 +857,24 @@ try {
       for (const field of ['id', 'type', 'rarity', 'maxTier']) {
         if (card[field] !== expected[field]) problems.push(`${name}.${field}: expected ${JSON.stringify(expected[field])}, got ${JSON.stringify(card[field])}`);
       }
+      if (card.blurbType !== 'function') problems.push(`${name}.blurb is not a function`);
     }
     check(
-      'M3: CARDS list matches the 13 SPEC cards (id/type/rarity/maxTier)',
+      `M7: CARDS list matches the ${CARD_COUNT} SPEC cards (id/type/rarity/maxTier)`,
       problems.length === 0,
       { count: catalogue.cards.length, problems },
-      '13 cards, exact ids/types/rarities/maxTier'
+      `${CARD_COUNT} cards, exact ids/types/rarities/maxTier`
     );
     const hexCards = catalogue.cards.filter((c) => c.type === 'hex');
     check(
-      'M6 cards: Split is the fifth Hex and hexTotal is generic',
-      hexCards.length === 5 &&
+      'M7 cards: Split is the fifth Hex, Second Draft the sixth, hexTotal is generic',
+      hexCards.length === HEX_COUNT &&
       !!C['Split'] &&
-      catalogue.hexTotal === 5 &&
-      !!catalogue.cards.find((c) => c.id === C['Split'] && c.blurbType === 'function'),
-      { hexCards: hexCards.map((c) => c.id), hexTotal: catalogue.hexTotal, split: C['Split'] },
-      '5 Hex cards incl split, window.__wordfall.hexTotal === 5'
+      catalogue.hexTotal === HEX_COUNT &&
+      !!catalogue.cards.find((c) => c.id === C['Split'] && c.blurbType === 'function') &&
+      !!catalogue.cards.find((c) => c.id === C['Second Draft'] && c.blurbType === 'function'),
+      { hexCards: hexCards.map((c) => c.id), hexTotal: catalogue.hexTotal, split: C['Split'], secondDraft: C['Second Draft'] },
+      `${HEX_COUNT} Hex cards incl split + second-draft, window.__wordfall.hexTotal === ${HEX_COUNT}`
     );
   }
 
@@ -823,19 +1072,45 @@ try {
       await resetRun([{ id: C['Greed'] }]);
       const t1 = await stateInfo();
       const run1 = await clearWithHook('ember');
-      const expected1 = scoreFormula(5, run1, { greedMult: 1.3 });
-      check('M3 Greed: fall speed x1.1 and score x1.3 (tier I)', approx(t1.speedMult, 1.1) && run1.cleared && scoreDelta(run1) === expected1, { speedMult: t1.speedMult, delta: scoreDelta(run1), expected: expected1 }, 'speedMult 1.1, score x1.3');
+      const expected1 = scoreFormula(5, run1, { greedMult: 1.4 });
+      check('M3 Greed: fall speed x1.03 and score x1.4 (tier I)', approx(t1.speedMult, 1.03) && run1.cleared && scoreDelta(run1) === expected1, { speedMult: t1.speedMult, delta: scoreDelta(run1), expected: expected1 }, 'speedMult 1.03, score x1.4');
 
       await wf(({ id }) => window.__wordfall.grant(id, 2), { id: C['Greed'] });
       const t2 = await stateInfo();
       const run2 = await clearWithHook('ember');
-      const expected2 = scoreFormula(5, run2, { greedMult: 1.6 });
-      check('M3 Greed: tier II speed x1.2 and score x1.6', t2.deck[ C['Greed'] ] === 2 && approx(t2.speedMult, 1.2) && run2.cleared && scoreDelta(run2) === expected2, { deck: t2.deck, speedMult: t2.speedMult, delta: scoreDelta(run2), expected: expected2, before: run2.before }, 'heldTier 2, speedMult 1.2, score x1.6');
+      const expected2 = scoreFormula(5, run2, { greedMult: 1.7 });
+      check('M3 Greed: tier II speed x1.06 and score x1.7', t2.deck[ C['Greed'] ] === 2 && approx(t2.speedMult, 1.06) && run2.cleared && scoreDelta(run2) === expected2, { deck: t2.deck, speedMult: t2.speedMult, delta: scoreDelta(run2), expected: expected2, before: run2.before }, 'heldTier 2, speedMult 1.06, score x1.7');
     });
   }
 
   if (C['Longshot']) {
     await section('M3 Longshot', async () => {
+      await resetRun([{ id: C['Longshot'] }]);
+      // M7: 7+ letter words fall 5% faster (was 20%).
+      const fall = await wf(() => {
+        const w = window.__wordfall;
+        const s = w.state;
+        s.words.length = 0;
+        const long = w.spawnWord('lantern', { y: 40 });
+        const short = w.spawnWord('ember', { y: 40 });
+        return { longId: long.id, shortId: short.id, longY: long.y, shortY: short.y };
+      });
+      await sleep(600);
+      const fall2 = await wf(({ longId, shortId }) => {
+        const s = window.__wordfall.state;
+        const long = s.words.find((w) => w.id === longId);
+        const short = s.words.find((w) => w.id === shortId);
+        return { longY: long ? long.y : null, shortY: short ? short.y : null, phase: s.phase };
+      }, fall);
+      const longDelta = fall2.longY == null ? 0 : fall2.longY - fall.longY;
+      const shortDelta = fall2.shortY == null ? 0 : fall2.shortY - fall.shortY;
+      const longRatio = shortDelta > 0 ? longDelta / shortDelta : 0;
+      check(
+        'M7 Longshot: 7+ letter words fall x1.05 (was x1.2)',
+        fall2.phase === 'playing' && shortDelta > 8 && longRatio >= 1.02 && longRatio <= 1.09,
+        { longDelta, shortDelta, ratio: Number(longRatio.toFixed(4)) },
+        'ratio in [1.02, 1.09] (nominal 1.05)'
+      );
       await resetRun([{ id: C['Longshot'] }]);
       const long = await clearWithHook('lantern');
       const expectedLong = scoreFormula(7, long, { longshot: true });
@@ -856,15 +1131,181 @@ try {
         return { before, after: { pressure: w.pressure(), bucket: w.bucketPressure(), range: w.wordRange(), held: w.heldTier(id) } };
       }, { id: C['Ledger'] });
       check(
-        'M3 Ledger: +8 bucket pressure, pressure() itself unchanged',
-        r.after.bucket - r.before.bucket === 8 && r.after.pressure === r.before.pressure,
+        'M7 Ledger: no +8 bucket-pressure surcharge (pressure and bucket unchanged)',
+        r.after.bucket === r.before.bucket && r.after.pressure === r.before.pressure && r.after.held === 1,
         r,
-        'bucketPressure +8, pressure unchanged'
+        'bucketPressure unchanged (the M6 +8 was removed), pressure unchanged'
       );
       check('M3 Ledger: bucket ramp keeps 7+ letter words out of range at 0 clears', r.after.range[1] < 7, r.after.range, 'wordRange max < 7 (Longshot stays ineligible)');
       const run = await clearWithHook('ember');
       const expected = scoreFormula(5, run, { ledger: true });
       check('M3 Ledger: +2 points per letter', run.cleared && scoreDelta(run) === expected, { delta: scoreDelta(run), expected, before: run.before }, `round(5*(10+2)*comboMult*heatMult) = ${expected}`);
+    });
+  }
+
+  // ═══ M7: the five new cards ═════════════════════════════════════════════
+  if (C['Lifeline']) {
+    await section('M7 Lifeline', async () => {
+      const setup = await wf(({ id }) => {
+        const w = window.__wordfall;
+        const s = w.state;
+        w.reset(8801);
+        w.grant(id);
+        const before = { lives: s.lives, used: s.lifelineUsed, held: w.heldTier(id) };
+        s.words.length = 0;
+        const word = w.spawnWord('cat', { y: s.groundY - 6 });
+        return { before, wordId: word.id, groundY: s.groundY };
+      }, { id: C['Lifeline'] });
+      await page.waitForFunction(
+        (id) => !window.__wordfall.state.words.some((w) => w.id === id),
+        setup.wordId,
+        { timeout: 5000 }
+      );
+      const saved = await wf(({ wordId }) => {
+        const w = window.__wordfall;
+        const s = w.state;
+        return { phase: s.phase, lives: s.lives, used: s.lifelineUsed, gone: !s.words.some((x) => x.id === wordId) };
+      }, { wordId: setup.wordId });
+      check(
+        'M7 Lifeline: the first word to reach the line is destroyed, life kept',
+        saved.phase === 'playing' && saved.lives === setup.before.lives && saved.used === true && saved.gone,
+        { setup, saved },
+        "phase 'playing', lives unchanged, lifelineUsed true"
+      );
+      const second = await wf(() => {
+        const w = window.__wordfall;
+        const s = w.state;
+        s.words.length = 0;
+        w.spawnWord('dog', { y: s.groundY - 6 });
+        return { lives: s.lives };
+      });
+      await page.waitForFunction(() => window.__wordfall.state.phase === 'gameover', null, { timeout: 5000 });
+      const dead = await wf(() => ({ phase: window.__wordfall.state.phase, lives: window.__wordfall.state.lives }));
+      check(
+        'M7 Lifeline: it saves exactly one life per run',
+        dead.phase === 'gameover' && dead.lives === 0 && second.lives === 1,
+        { second, dead },
+        'second word reaches the line -> gameover'
+      );
+    });
+  }
+
+  if (C['Rally']) {
+    await section('M7 Rally', async () => {
+      const r = await wf(({ id }) => {
+        const w = window.__wordfall;
+        const s = w.state;
+        w.reset(8802);
+        s.cleared = 22; // pressure 22, before the first draft
+        const base = { pressure: w.pressure(), bucket: w.bucketPressure(), range: w.wordRange() };
+        w.grant(id);
+        const tier1 = { bucket: w.bucketPressure(), range: w.wordRange(), held: w.heldTier(id), scoreMult: w.scoreMult() };
+        w.grant(id, 2);
+        const tier2 = { bucket: w.bucketPressure(), range: w.wordRange(), held: w.heldTier(id), scoreMult: w.scoreMult() };
+        return { base, tier1, tier2 };
+      }, { id: C['Rally'] });
+      check(
+        'M7 Rally: word length reads 10 less Pressure (tier I)',
+        r.base.pressure === 22 && r.base.bucket === 22 && r.tier1.bucket === 12 && r.tier1.held === 1,
+        r,
+        'bucketPressure 22 -> 12 at pressure 22'
+      );
+      check(
+        'M7 Rally: tier II reads 18 less Pressure',
+        r.tier2.bucket === 4 && r.tier2.held === 2,
+        r.tier2,
+        'bucketPressure 4 at pressure 22'
+      );
+      check(
+        'M7 Rally: the lower bucket shifts the word-length band',
+        r.base.range[0] === 4 && r.tier1.range[1] === 6 && r.tier2.range[1] === 5,
+        { base: r.base.range, tier1: r.tier1.range, tier2: r.tier2.range },
+        'range 4-6 -> 3-6 -> 3-5'
+      );
+    });
+  }
+
+  if (C['Drought']) {
+    await section('M7 Drought', async () => {
+      const r = await wf(({ id }) => {
+        const w = window.__wordfall;
+        w.reset(8803);
+        const base = { interval: w.spawnInterval(), scoreMult: w.scoreMult() };
+        w.grant(id);
+        const tier1 = { interval: w.spawnInterval(), scoreMult: w.scoreMult(), held: w.heldTier(id) };
+        w.grant(id, 2);
+        const tier2 = { interval: w.spawnInterval(), scoreMult: w.scoreMult(), held: w.heldTier(id) };
+        return { base, tier1, tier2 };
+      }, { id: C['Drought'] });
+      check(
+        'M7 Drought: spawn interval x1.15 and score x0.9 (tier I)',
+        approx(r.tier1.interval, r.base.interval * 1.15, 1e-9) && approx(r.tier1.scoreMult, 0.9) && r.tier1.held === 1,
+        r,
+        'interval x1.15, scoreMult 0.9'
+      );
+      check(
+        'M7 Drought: spawn interval x1.2 and score x0.85 (tier II)',
+        approx(r.tier2.interval, r.base.interval * 1.2, 1e-9) && approx(r.tier2.scoreMult, 0.85) && r.tier2.held === 2,
+        r.tier2,
+        'interval x1.2, scoreMult 0.85'
+      );
+    });
+  }
+
+  if (C['Bargain']) {
+    await section('M7 Bargain', async () => {
+      const r = await wf(({ id }) => {
+        const w = window.__wordfall;
+        const s = w.state;
+        w.reset(8804);
+        const base = { scoreMult: w.scoreMult() };
+        w.grant(id);
+        const held = { scoreMult: w.scoreMult(), tier: w.heldTier(id) };
+        w.beginDraft();
+        const before = { score: s.score, pressure: w.pressure(), wave: s.wave, shields: s.shields };
+        const ok = w.skip();
+        return {
+          base, held, ok, before,
+          after: { score: s.score, pressure: w.pressure(), wave: s.wave, shields: s.shields, phase: s.phase },
+        };
+      }, { id: C['Bargain'] });
+      check('M7 Bargain: score x2', approx(r.held.scoreMult, 2) && r.held.scoreMult === r.base.scoreMult * 2 && r.held.tier === 1, { base: r.base, held: r.held }, 'scoreMult 1 -> 2');
+      check(
+        'M7 Bargain: Skip pays no points (pressure/draft rules unchanged)',
+        r.ok === true && r.after.score === r.before.score && r.after.pressure === r.before.pressure + 4 && r.after.wave === r.before.wave + 1 && r.after.shields === r.before.shields + 1,
+        r,
+        'score +0, pressure +4, wave +1, +1 Shield'
+      );
+    });
+  }
+
+  if (C['Second Draft']) {
+    await section('M7 Second Draft', async () => {
+      const r = await wf(({ id }) => {
+        const w = window.__wordfall;
+        w.reset(8805);
+        const before = { rerolls: w.rerollsLeft(), held: w.heldTier(id) };
+        w.grant(id);
+        const after = { rerolls: w.rerollsLeft(), held: w.heldTier(id), maxTier: w.CARDS.find((c) => c.id === id).maxTier };
+        w.beginDraft();
+        const first = w.reroll();
+        const mid = w.rerollsLeft();
+        const second = w.reroll();
+        return { before, after, first, mid, second, finalLeft: w.rerollsLeft() };
+      }, { id: C['Second Draft'] });
+      check(
+        'M7 Second Draft: +1 reroll for the run',
+        r.before.rerolls === 1 && r.after.rerolls === 2 && r.after.held === 1 && r.after.maxTier === 1,
+        r,
+        'reroll 1 -> 2, heldTier 1'
+      );
+      check(
+        'M7 Second Draft: both rerolls are usable in one draft',
+        r.first === true && r.mid === 1 && r.second === true && r.finalLeft === 0,
+        { first: r.first, mid: r.mid, second: r.second, finalLeft: r.finalLeft },
+        '1 -> 0 after two rerolls'
+      );
+      await wf(() => window.__wordfall.skip());
     });
   }
 
@@ -1039,8 +1480,8 @@ try {
     });
   }
 
-  // ═══ M3: all four Hexes raise heat (and score) by tier ═════════════════
-  const hexNames = ['Reverse', 'Tunnel', 'Ghost', 'Decoy', 'Split'].filter((n) => C[n]);
+  // ═══ M3: all six Hexes raise heat (and score) by tier ═════════════════
+  const hexNames = ['Reverse', 'Tunnel', 'Ghost', 'Decoy', 'Split', 'Second Draft'].filter((n) => C[n]);
   for (const name of hexNames) {
     await section(`M3 ${name} heat`, async () => {
       const t1 = await wf(({ id }) => {
@@ -1081,7 +1522,7 @@ try {
     });
   }
 
-  if (hexNames.length === 5) {
+  if (hexNames.length === HEX_COUNT) {
     await section('M3 Hex heat aggregate', async () => {
       const r = await wf(({ ids }) => {
         const w = window.__wordfall;
@@ -1091,9 +1532,9 @@ try {
         w.grant(ids[1], 2); // tunnel
         w.grant(ids[3], 2); // decoy
         return { tier1, tier2: { heat: w.heat(), heatMult: w.heatMult() } };
-      }, { ids: [C['Reverse'], C['Tunnel'], C['Ghost'], C['Decoy'], C['Split']] });
-      check('M3 Hex heat: all five Hexes stack (heat 5, heatMult 2.25)', r.tier1.heat === 5 && approx(r.tier1.heatMult, 2.25), r.tier1, 'heat 5, heatMult 2.25');
-      check('M3 Hex heat: tier II Hexes count twice (heat 7, heatMult 2.75)', r.tier2.heat === 7 && approx(r.tier2.heatMult, 2.75), r.tier2, 'heat 7, heatMult 2.75');
+      }, { ids: [C['Reverse'], C['Tunnel'], C['Ghost'], C['Decoy'], C['Split'], C['Second Draft']] });
+      check('M3 Hex heat: all six Hexes stack (heat 6, heatMult 2.5)', r.tier1.heat === 6 && approx(r.tier1.heatMult, 2.5), r.tier1, 'heat 6, heatMult 2.5');
+      check('M3 Hex heat: tier II Hexes count twice (heat 8, heatMult 3.0)', r.tier2.heat === 8 && approx(r.tier2.heatMult, 3.0), r.tier2, 'heat 8, heatMult 3.0');
       const run = await clearWithHook('ember');
       const expected = Math.round(5 * 10 * run.before.comboMult * run.before.heatMult);
       check('M3 Hex heat: stack multiplies the score', run.cleared && scoreDelta(run) === expected, { delta: scoreDelta(run), expected, before: run.before }, `expected ${expected}`);
@@ -1122,6 +1563,11 @@ try {
       let drafts = 0;
       let nullSlotCount = 0;
       let offerCount = 0;
+      let slot2Offers = 0;
+      let slot2Boons = 0;
+      let slot3Offers = 0;
+      let slot3Rares = 0;
+      const deadByScenario = {};
       const violate = (rule, detail) => {
         if (violations.length < 200) violations.push(Object.assign({ rule }, detail));
       };
@@ -1157,6 +1603,15 @@ try {
           if (offer.length !== 3) violate('offer has exactly 3 slots', { scenario: sc.name, seed: sc.seedBase + i, length: offer.length });
           if (new Set(cardIds).size !== cardIds.length) violate('no duplicate card ids in one offer', { scenario: sc.name, seed: sc.seedBase + i, cardIds });
           if (!offer[0]) nullSlotCount += 1;
+          if (cards.length === 0) deadByScenario[sc.name] = (deadByScenario[sc.name] || 0) + 1;
+          if (offer[1]) {
+            slot2Offers += 1;
+            if (offer[1].type === 'boon') slot2Boons += 1;
+          }
+          if (offer[2]) {
+            slot3Offers += 1;
+            if (offer[2].rarity === 'rare') slot3Rares += 1;
+          }
           if (offer[0] && offer[0].type !== 'boon') violate('slot 1 is a Boon', { scenario: sc.name, seed: sc.seedBase + i, card: offer[0].id, type: offer[0].type });
           if (offer[2] && offer[2].type !== 'hex' && offer[2].type !== 'gambit') violate('slot 3 is a Hex or Gambit', { scenario: sc.name, seed: sc.seedBase + i, card: offer[2].id, type: offer[2].type });
           if (sc.name === 'maxed' && cards.length > 0) violate('no cards offered when every card is at max tier', { scenario: sc.name, seed: sc.seedBase + i, cardIds });
@@ -1182,6 +1637,11 @@ try {
         drafts,
         offerCount,
         nullSlotCount,
+        slot2Offers,
+        slot2Boons,
+        slot3Offers,
+        slot3Rares,
+        deadByScenario,
         violations: violations.slice(0, 40),
         violationCount: violations.length,
         offeredCount,
@@ -1194,15 +1654,44 @@ try {
       'M3 eligibility: no ineligible card offered across seeded drafts',
       result.violationCount === 0,
       { drafts: result.drafts, scenarioCount: scenarios.length, violationCount: result.violationCount, violations: result.violations },
-      '0 violations; 1050 seeded beginDraft() offers'
+      '0 violations across seeded beginDraft() offers'
     );
     check(
-      'M3 eligibility: scenario preconditions (lives 3, shieldMax 3, low/high word range, all five Hexes)',
+      'M7 eligibility: no dead drafts (except the deliberately maxed deck)',
+      scenarios.filter((sc) => sc.name !== 'maxed').reduce((n, sc) => n + (result.deadByScenario[sc.name] || 0), 0) === 0 &&
+      (result.deadByScenario.maxed || 0) === 100,
+      { deadByScenario: result.deadByScenario, nullSlotCount: result.nullSlotCount },
+      '0 dead offers in normal scenarios; 100 in the maxed scenario'
+    );
+    const nonMaxedOffers = result.offerCount - 100;
+    const noBoon = result.nullSlotCount - 100;
+    check(
+      'M7 eligibility: every normal draft has a Boon in slot 1',
+      nonMaxedOffers > 0 && noBoon === 0 && result.slot2Offers === nonMaxedOffers,
+      { nonMaxedOffers, noBoonDrafts: noBoon, slot2Offers: result.slot2Offers },
+      'slot 1 always a Boon; slot 2 always populated'
+    );
+    const slot2BoonRate = result.slot2Offers ? result.slot2Boons / result.slot2Offers : 0;
+    check(
+      'M7 draft: slot 2 is mostly diverse but can still offer a Boon (~11.5%)',
+      result.slot2Boons > 0 && result.slot2Boons < result.slot2Offers && slot2BoonRate > 0.03 && slot2BoonRate < 0.35,
+      { slot2Offers: result.slot2Offers, slot2Boons: result.slot2Boons, slot2BoonRate: Number(slot2BoonRate.toFixed(4)) },
+      '0% < slot-2 Boon rate < 35% (measured ~11.5%)'
+    );
+    const slot3RareRate = result.slot3Offers ? result.slot3Rares / result.slot3Offers : 0;
+    check(
+      'M7 draft: slot 3 rare rate is in the wave-scaled band',
+      slot3RareRate > 0.2 && slot3RareRate < 0.5,
+      { slot3Offers: result.slot3Offers, slot3Rares: result.slot3Rares, slot3RareRate: Number(slot3RareRate.toFixed(4)) },
+      'slot-3 rare rate in (20%, 50%) at wave 1 (nominal 31%, fallback-raised)'
+    );
+    check(
+      'M3 eligibility: scenario preconditions (lives 3, shieldMax 3, low/high word range, all six Hexes)',
       result.scenarioState.fresh.range[1] < 7 &&
       result.scenarioState['high-pressure'].range[1] >= 7 &&
       result.scenarioState.lives3.lives === 3 &&
       result.scenarioState.shield3.shieldMax >= 3 &&
-      Object.values(result.scenarioState['all-hexes'].held).filter((t) => t >= 1).length === 5,
+      Object.values(result.scenarioState['all-hexes'].held).filter((t) => t >= 1).length === HEX_COUNT,
       {
         freshRange: result.scenarioState.fresh.range,
         highRange: result.scenarioState['high-pressure'].range,
@@ -1210,19 +1699,24 @@ try {
         shield3: result.scenarioState.shield3.shieldMax,
         allHexesHeld: result.scenarioState['all-hexes'].held,
       },
-      'fresh range max<7, high range max>=7, lives3=3, shield3>=3, all five hexes held'
+      'fresh range max<7, high range max>=7, lives3=3, shield3>=3, all six hexes held'
     );
     const covered = Object.values(EXPECTED_CARDS).filter((c) => (result.offeredCount[c.id] || 0) > 0).length;
     check(
-      'M3 eligibility: all 13 cards can be offered (draft pool coverage)',
-      covered === 13,
+      `M7 eligibility: all ${CARD_COUNT} cards can be offered (draft pool coverage)`,
+      covered === CARD_COUNT,
       { covered, offeredCount: result.offeredCount },
-      '13/13 cards observed'
+      `${CARD_COUNT}/${CARD_COUNT} cards observed`
     );
     notes.eligibility = {
       drafts: result.drafts,
       violations: result.violationCount,
       offeredCount: result.offeredCount,
+      deadByScenario: result.deadByScenario,
+      slot2Boons: result.slot2Boons,
+      slot2Offers: result.slot2Offers,
+      slot3Rares: result.slot3Rares,
+      slot3Offers: result.slot3Offers,
       samples: result.samples,
       scenarioState: result.scenarioState,
     };
@@ -1232,7 +1726,6 @@ try {
   await section('M4 screenshots', async () => {
     const allIds = Object.values(EXPECTED_CARDS).map((c) => c.id);
     await resetRun(allIds.map((id) => ({ id, tier: 1 })));
-    // Clear one word so a Ghost echo + particles are on screen.
     await clearWithHook('cat', { y: 260 });
     await wf(() => {
       const w = window.__wordfall;
@@ -1242,7 +1735,7 @@ try {
       const target = w.targetWord();
       if (target) target.progress = 1;
     });
-    await sleep(160);
+    await sleep(520); // let the spawn-materialise flicker finish for the HUD shot
     await page.screenshot({ path: shot('07-hud-cards.png') });
     const visual = await stateInfo();
     notes.m4 = {
@@ -1256,7 +1749,7 @@ try {
       lives: visual.lives,
       shields: visual.shields,
     };
-    check('M4: HUD-with-cards state renders (13 cards held)', Object.keys(visual.deck).length === 13 && visual.phase === 'playing', { deck: visual.deck, phase: visual.phase }, '13 held cards, phase playing');
+    check('M4: HUD-with-cards state renders (18 cards held)', Object.keys(visual.deck).length === CARD_COUNT && visual.phase === 'playing', { deck: visual.deck, phase: visual.phase }, '18 held cards, phase playing');
   });
 
   // ═══ M6: pause ═════════════════════════════════════════════════════════
@@ -1293,9 +1786,9 @@ try {
     );
     check(
       'M6 pause: the seed line shows the seed and played time',
-      new RegExp(`^Seed ${before.seed} \\u00b7 \\d\\d:\\d\\d played$`).test(String(paused.pauseSeedLine || '')),
+      new RegExp(`^Seed ${before.seed} \\u00b7 \\d\\d:\\d\\d played`).test(String(paused.pauseSeedLine || '')),
       paused.pauseSeedLine,
-      `Seed ${before.seed} · MM:SS played`
+      `Seed ${before.seed} · MM:SS played (+ wave/WPM/combo detail)`
     );
     check(
       'M6 pause: the dialog offers Resume (default), Restart Run and Controls',
@@ -1923,6 +2416,512 @@ try {
     notes.split = { seqs, extras: allExtras, typeable, ground: { setup: ground, after: groundAfter }, fakeCheck, cap: { maxWords: cap.maxWords, beforeCount: cap.beforeCount, afterCount: cap.afterCount, extra } };
   });
 
+  // ═══ M7: effects, juice, FX toggle, overlay, celebration, frame time ════
+  await section('M7 effects layer', async () => {
+    // Headless Chrome may report prefers-reduced-motion on boot; force full FX
+    // so the effect assertions measure the real full-quality layer.
+    const quality = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'full') w.toggleEffects();
+      return w.settings.fx;
+    });
+    check('M7 FX: full effects quality is active for the FX checks', quality === 'full', quality, "'full'");
+
+    const clear = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(7001);
+      s.lives = 3;
+      s.words.length = 0;
+      const word = w.spawnWord('ember', { y: 300 });
+      let guard = 0;
+      while (guard++ < 16 && s.words.indexOf(word) >= 0) {
+        const ch = w.nextChar(word);
+        if (ch == null) break;
+        w.typeLetter(ch);
+      }
+      return {
+        cleared: s.cleared,
+        combo: s.combo,
+        fx: w.fxState(),
+        caps: { particles: w.CFG.fxMaxParticles, shards: w.CFG.fxMaxShards, rings: w.CFG.fxMaxRings, popups: w.CFG.fxMaxPopups },
+      };
+    });
+    check(
+      'M7 FX: clearing a word emits particles, glyph shards, rings and popups',
+      clear.cleared === 1 && clear.fx.particles > 0 && clear.fx.shards > 0 && clear.fx.rings > 0 && clear.fx.popups > 0,
+      clear,
+      'all four pools non-empty right after the last letter'
+    );
+    check(
+      'M7 FX: live pools stay within the CFG caps right after a clear',
+      clear.fx.particles <= clear.caps.particles &&
+      clear.fx.shards <= clear.caps.shards &&
+      clear.fx.rings <= clear.caps.rings &&
+      clear.fx.popups <= clear.caps.popups,
+      { fx: clear.fx, caps: clear.caps },
+      'pool sizes <= CFG.fxMax*'
+    );
+    check(
+      'M7 FX: fxState() exposes the documented contract',
+      ['quality', 'particles', 'shards', 'rings', 'popups', 'milestone', 'danger', 'cssCombos'].every((k) => k in clear.fx) &&
+      clear.fx.quality === 'full',
+      clear.fx,
+      '{quality, particles, shards, rings, popups, milestone, danger, cssCombos}'
+    );
+    await sleep(80);
+    const hud = await domInfo();
+    const comboMult = await wf(() => window.__wordfall.comboMultiplier());
+    check(
+      'M7 HUD: #statusCombo tracks comboMultiplier()',
+      hud.statusCombo === `Combo: ${comboMult.toFixed(2)}\u00d7` && hud.bodyClasses.includes('phase-playing'),
+      { statusCombo: hud.statusCombo, expected: `Combo: ${comboMult.toFixed(2)}\u00d7`, comboMult, body: hud.bodyClasses },
+      '"Combo: 1.05×" after one clear, body.phase-playing'
+    );
+    check(
+      'M7 HUD: #app carries the --fx-combo and --fx-danger CSS vars',
+      !!hud.appVars && hud.appVars.combo !== '' && hud.appVars.danger !== '' && Number(hud.appVars.combo) === 1,
+      hud.appVars,
+      '--fx-combo 1, --fx-danger set'
+    );
+
+    // Dense staging for the effects screenshot: several clears in quick
+    // succession so particles/shards/rings/popups are all on screen at once.
+    await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const texts = ['ember', 'lantern', 'drift', 'hollow', 'tunnel'];
+      for (const text of texts) {
+        s.words.length = 0;
+        const word = w.spawnWord(text, { y: 240 });
+        let guard = 0;
+        while (guard++ < 20 && s.words.indexOf(word) >= 0) {
+          const ch = w.nextChar(word);
+          if (ch == null) break;
+          w.typeLetter(ch);
+        }
+      }
+    });
+    await page.screenshot({ path: shot('10-fx-clear.png') }); // M7: impact layer
+  });
+
+  await section('M7 combo milestone', async () => {
+    const r = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(7002);
+      s.lives = 3;
+      s.cleared = 9;
+      s.combo = 9;
+      s.bestCombo = 9;
+      s.words.length = 0;
+      const word = w.spawnWord('ember', { y: 250 });
+      let guard = 0;
+      while (guard++ < 16 && s.words.indexOf(word) >= 0) {
+        const ch = w.nextChar(word);
+        if (ch == null) break;
+        w.typeLetter(ch);
+      }
+      return { combo: s.combo, milestoneT: s.milestoneT, fx: w.fxState(), comboMult: w.comboMultiplier() };
+    });
+    check(
+      'M7 milestone: the 10th combo sets fxState().milestone and the transient timer',
+      r.combo === 10 && r.fx.milestone === true && r.milestoneT > 0,
+      r,
+      'combo 10, milestone true'
+    );
+    await sleep(80);
+    const hud = await domInfo();
+    check(
+      'M7 milestone: body gets fx-milestone and the combo-hot class at combo >= 5',
+      hud.bodyClasses.includes('fx-milestone') && hud.bodyClasses.includes('fx-combo-hot'),
+      { body: hud.bodyClasses, statusCombo: hud.statusCombo },
+      'fx-milestone + fx-combo-hot on body'
+    );
+    check(
+      'M7 milestone: #statusCombo and --fx-combo track the milestone combo',
+      hud.statusCombo === `Combo: ${r.comboMult.toFixed(2)}\u00d7` && Number(hud.appVars.combo) === 10,
+      { statusCombo: hud.statusCombo, expected: `Combo: ${r.comboMult.toFixed(2)}\u00d7`, appCombo: hud.appVars.combo },
+      'status "Combo: 1.50×", --fx-combo 10'
+    );
+  });
+
+  await section('M7 draft tags', async () => {
+    const found = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      for (let seed = 1; seed < 800; seed++) {
+        w.reset(seed);
+        w.grant('rally', 1);
+        w.beginDraft();
+        const offer = s.offer || [];
+        if (offer.some((c) => c && c.id === 'rally' && c.tier === 2)) {
+          return { seed, offer: offer.map((c) => (c ? { id: c.id, tier: c.tier } : null)) };
+        }
+      }
+      return null;
+    });
+    check('M7 draft: a tier-II upgrade offer is reachable (Rally II)', !!found, found, 'found in seeded offers');
+    if (found) {
+      await wf((seed) => {
+        const w = window.__wordfall;
+        w.reset(seed);
+        w.grant('rally', 1);
+        w.beginDraft();
+      }, found.seed);
+      await sleep(100);
+      const hud = await domInfo();
+      const cards = hud.draftCards || [];
+      const upCard = cards.find((c) => /tag-up/.test(c.tagClass || ''));
+      check(
+        'M7 draft: the UPGRADE tag renders inside a tier-II draft card',
+        !!upCard && upCard.tag === 'UPGRADE' && /II/.test(upCard.name || '') && !!upCard.desc,
+        { cards, upCard },
+        'tag-up / UPGRADE / "Rally II" + description'
+      );
+      await page.screenshot({ path: shot('13-draft-upgrade.png') });
+      await wf(() => window.__wordfall.skip());
+    }
+
+    // A rare offer for the RARE-outline screenshot: find it in the seeded pool.
+    const rareFound = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      for (let seed = 1; seed < 800; seed++) {
+        w.reset(seed);
+        w.beginDraft();
+        const offer = s.offer || [];
+        if (offer.some((c) => c && c.rarity === 'rare')) {
+          return { seed, offer: offer.map((c) => (c ? { id: c.id, rarity: c.rarity, tier: c.tier } : null)) };
+        }
+      }
+      return null;
+    });
+    check('M7 draft: a rare offer is reachable in the seeded draft pool', !!rareFound, rareFound, 'found in seeded offers');
+    if (rareFound) {
+      await wf((seed) => {
+        const w = window.__wordfall;
+        w.reset(seed);
+        w.beginDraft();
+      }, rareFound.seed);
+      await sleep(100);
+      const hud = await domInfo();
+      const cards = hud.draftCards || [];
+      const rares = cards.filter((c) => c.rare);
+      const expectedRare = rareFound.offer.filter((c) => c && c.rarity === 'rare').length;
+      check(
+        'M7 draft: the RARE outline marker renders on exactly the rare cards',
+        expectedRare > 0 && rares.length === expectedRare && rares.every((c) => c.tag === 'NEW' || c.tag === 'UPGRADE'),
+        { cards, expectedRare },
+        'RARE marker on rare offers'
+      );
+      await page.screenshot({ path: shot('12-draft-rare.png') });
+      await wf(() => window.__wordfall.skip());
+    }
+  });
+
+  await section('M7 effects toggle + persistence', async () => {
+    const start = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'full') w.toggleEffects();
+      return {
+        quality: w.settings.fx,
+        menu: String((document.getElementById('menuEffects') || {}).textContent || '').trim(),
+        fxLight: document.body.classList.contains('fx-light'),
+      };
+    });
+    check(
+      'M7 FX toggle: full mode renders the Effects: Full menu label',
+      start.quality === 'full' && start.menu === 'Effects: Full' && !start.fxLight,
+      start,
+      "'Effects: Full', body without fx-light"
+    );
+
+    const measureClear = (seed) => wf((seed) => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(seed);
+      s.lives = 3;
+      s.words.length = 0;
+      const word = w.spawnWord('ember', { y: 250 });
+      let guard = 0;
+      while (guard++ < 16 && s.words.indexOf(word) >= 0) {
+        const ch = w.nextChar(word);
+        if (ch == null) break;
+        w.typeLetter(ch);
+      }
+      return w.fxState();
+    }, seed);
+    const fullFx = await measureClear(7010);
+
+    const toggled = await wf(() => {
+      const w = window.__wordfall;
+      const before = w.settings.fx;
+      w.toggleEffects();
+      let stored = null;
+      try { stored = JSON.parse(localStorage.getItem('wordfall.settings') || 'null'); } catch (e) { /* ignore */ }
+      return {
+        before,
+        after: w.settings.fx,
+        fxLight: document.body.classList.contains('fx-light'),
+        menu: String((document.getElementById('menuEffects') || {}).textContent || '').trim(),
+        stored,
+      };
+    });
+    check(
+      'M7 FX toggle: toggleEffects() flips full -> light, sets the body class and menu label',
+      toggled.before === 'full' && toggled.after === 'light' && toggled.fxLight && toggled.menu === 'Effects: Light',
+      toggled,
+      'full -> light, body.fx-light, "Effects: Light"'
+    );
+    check(
+      'M7 FX toggle: the light setting is persisted to localStorage wordfall.settings',
+      !!toggled.stored && toggled.stored.fx === 'light' && typeof toggled.stored.muted === 'boolean',
+      toggled.stored,
+      'wordfall.settings = {muted, fx: "light"}'
+    );
+
+    const lightFx = await measureClear(7010);
+    check(
+      'M7 FX toggle: light mode emits fewer particles but still produces effects',
+      lightFx.quality === 'light' &&
+      lightFx.particles > 0 && lightFx.shards > 0 &&
+      lightFx.particles < fullFx.particles * 0.7,
+      { full: { particles: fullFx.particles, shards: fullFx.shards, rings: fullFx.rings }, light: { particles: lightFx.particles, shards: lightFx.shards, rings: lightFx.rings } },
+      'light particles < 70% of full, and non-zero'
+    );
+
+    await reloadGame();
+    const persisted = await wf(() => {
+      const w = window.__wordfall;
+      let stored = null;
+      try { stored = JSON.parse(localStorage.getItem('wordfall.settings') || 'null'); } catch (e) { /* ignore */ }
+      return {
+        quality: w.settings.fx,
+        fxLight: document.body.classList.contains('fx-light'),
+        menu: String((document.getElementById('menuEffects') || {}).textContent || '').trim(),
+        stored,
+        phase: w.state.phase,
+        version: w.version,
+      };
+    });
+    check(
+      'M7 FX toggle: the light setting survives a page reload',
+      persisted.quality === 'light' && persisted.fxLight && persisted.menu === 'Effects: Light' &&
+      persisted.stored && persisted.stored.fx === 'light' && persisted.version === 'M7',
+      persisted,
+      'boots into light FX from localStorage'
+    );
+
+    const restored = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'full') w.toggleEffects();
+      return {
+        quality: w.settings.fx,
+        fxLight: document.body.classList.contains('fx-light'),
+        menu: String((document.getElementById('menuEffects') || {}).textContent || '').trim(),
+      };
+    });
+    check(
+      'M7 FX toggle: full mode can be restored and re-applies the full-FX hooks',
+      restored.quality === 'full' && !restored.fxLight && restored.menu === 'Effects: Full',
+      restored,
+      "'Effects: Full', no body.fx-light"
+    );
+  });
+
+  await section('M7 FX overlay + dialogs', async () => {
+    await wf(() => {
+      const el = document.getElementById('welcomeStart');
+      if (el) el.click();
+    });
+    await sleep(200);
+    const hud = await domInfo();
+    check(
+      'M7 FX: #fxOverlay exists, is pointer-events:none and sits below #modalLayer',
+      hud.fxOverlay.exists &&
+      hud.fxOverlay.pointerEvents === 'none' &&
+      Number(hud.fxOverlay.zIndex) < Number(hud.modalZIndex),
+      { overlay: hud.fxOverlay, modalZIndex: hud.modalZIndex },
+      'pointer-events none, overlay z-index < modal z-index'
+    );
+
+    await page.keyboard.press('Alt+h');
+    await sleep(120);
+    const menuOpen = await wf(() => !!document.querySelector('.menu-item[data-menu="help"].open'));
+    await wf(() => document.querySelector('.menu-item[data-menu="help"] .drop-item[data-cmd="controls"]').click());
+    await sleep(150);
+    const controls = await domInfo();
+    check(
+      'M7 FX: dialogs still open above the FX overlay (Help > Controls)',
+      menuOpen && controls.dlgControls.show && /controls/i.test(controls.dlgControls.text || '') && controls.modalOpen,
+      { menuOpen, controlsShown: controls.dlgControls.show, modalOpen: controls.modalOpen },
+      'Controls dialog shown, modal layer open'
+    );
+    await wf(() => document.getElementById('controlsOk').click());
+    await sleep(150);
+    const after = await wf(() => ({
+      phase: window.__wordfall.state.phase,
+      controls: document.getElementById('dlgControls').classList.contains('show'),
+      modal: !!document.querySelector('#modalLayer.open'),
+    }));
+    check(
+      'M7 FX: closing Controls returns to play (the overlay does not block clicks)',
+      after.phase === 'playing' && !after.controls && !after.modal,
+      after,
+      "phase 'playing', Controls closed"
+    );
+  });
+
+  await section('M7 wave celebration', async () => {
+    const setup = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(7100);
+      s.lives = 3;
+      s.words.length = 0;
+      s.waveCleared = 9;
+      s.cleared = 9;
+      const word = w.spawnWord('ember', { y: 250 });
+      let guard = 0;
+      while (guard++ < 16 && s.words.indexOf(word) >= 0) {
+        const ch = w.nextChar(word);
+        if (ch == null) break;
+        w.typeLetter(ch);
+      }
+      return {
+        phase: s.phase, cleared: s.cleared, waveCleared: s.waveCleared, wave: s.wave,
+        waveClearT: s.waveClearT, fx: w.fxState(),
+      };
+    });
+    check(
+      'M7 wave celebration: the 10th clear freezes play and starts the beat',
+      setup.phase === 'playing' && setup.cleared === 10 && setup.waveCleared === 10 && setup.waveClearT > 0,
+      setup,
+      "phase 'playing', cleared 10, waveClearT > 0"
+    );
+    check(
+      'M7 wave celebration: the celebration emitters fire (rings + popups)',
+      setup.fx.rings > 0 && setup.fx.popups > 0 && setup.fx.particles > 0,
+      setup.fx,
+      'rings / popups / particles live during the beat'
+    );
+    const t0 = Date.now();
+    const inert = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const keysBefore = s.keys;
+      const comboBefore = s.combo;
+      w.typeLetter('q');
+      return { keysBefore, comboBefore, keysAfter: s.keys, combo: s.combo, phase: s.phase, waveClearT: s.waveClearT };
+    });
+    check(
+      'M7 wave celebration: typeLetter() is inert during the beat',
+      inert.keysAfter === inert.keysBefore && inert.combo === inert.comboBefore && inert.phase === 'playing',
+      inert,
+      'no keys/combo change'
+    );
+    const ysA = await wf(() => window.__wordfall.state.words.map((w) => w.y));
+    await sleep(200);
+    const frozen = await wf(() => ({ ys: window.__wordfall.state.words.map((w) => w.y), phase: window.__wordfall.state.phase, waveClearT: window.__wordfall.state.waveClearT }));
+    check(
+      'M7 wave celebration: the board hangs frozen during the beat',
+      JSON.stringify(ysA) === JSON.stringify(frozen.ys),
+      { before: ysA, during: frozen.ys, phase: frozen.phase },
+      'word y positions unchanged'
+    );
+    await page.waitForFunction(() => window.__wordfall.state.phase === 'draft', null, { timeout: 2500 });
+    const waitedMs = Date.now() - t0;
+    check(
+      'M7 wave celebration: the draft opens ~0.85 s after the last clear, not immediately',
+      waitedMs >= 150 && waitedMs <= 2200,
+      { waitedMs },
+      'deferred draft (150-2200 ms)'
+    );
+    await wf(() => window.__wordfall.skip());
+  });
+
+  await section('M7 perf', async () => {
+    const mode = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'full') w.toggleEffects();
+      return w.settings.fx;
+    });
+    check('M7 perf: the frame-time run starts in full FX mode', mode === 'full', mode, "'full'");
+
+    const full = await measureFxLoad(185);
+    const fullFps = full.avgMs ? 1000 / full.avgMs : 0;
+    check(
+      'M7 perf: full FX sustains >= 50 fps while clearing a full board',
+      full.frames >= 160 && full.avgMs <= 20 && full.clears >= 100,
+      { frames: full.frames, avgMs: Number(full.avgMs.toFixed(2)), fps: Number(fullFps.toFixed(1)), clears: full.clears, p95Ms: Number(full.p95Ms.toFixed(2)) },
+      'avg frame <= 20 ms (>= 50 fps) over ~3 s of continuous clears'
+    );
+    // Headless Chrome occasionally drops an isolated vsync frame; budget 10%
+    // of frames (never fewer than 5) while keeping p95 inside one 60 fps frame.
+    const longBudget = Math.max(5, Math.ceil(full.frames * 0.1));
+    check(
+      'M7 perf: long frames stay rare in full FX mode',
+      full.longFrames <= longBudget && full.maxMs <= 100 && full.p95Ms <= 20,
+      { longFrames: full.longFrames, longBudget, maxMs: Number(full.maxMs.toFixed(2)), p95Ms: Number(full.p95Ms.toFixed(2)) },
+      `<= ${longBudget} frames over 33 ms (10% budget), p95 <= 20 ms, worst frame <= 100 ms`
+    );
+    check(
+      'M7 perf: every effect pool stayed within its CFG cap under load',
+      full.maxPools.particles <= full.caps.particles &&
+      full.maxPools.shards <= full.caps.shards &&
+      full.maxPools.rings <= full.caps.rings &&
+      full.maxPools.popups <= full.caps.popups,
+      { maxPools: full.maxPools, caps: full.caps },
+      'peak pools <= CFG.fxMax*'
+    );
+    check(
+      'M7 perf: effects stay live for the whole load run',
+      full.effectsSeen >= full.frames - 5 && full.maxPools.particles > 20,
+      { effectsSeen: full.effectsSeen, frames: full.frames, peakParticles: full.maxPools.particles },
+      'effect pools non-empty on essentially every frame'
+    );
+    check(
+      'M7 perf: perf() reports {avgMs, fps, pressure, quality}',
+      full.perf && typeof full.perf.avgMs === 'number' && typeof full.perf.fps === 'number' &&
+      typeof full.perf.pressure === 'number' && full.perf.quality === 'full' && full.perf.fps >= 45,
+      full.perf,
+      'shape valid, quality full, fps >= 45'
+    );
+
+    const lightMode = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'light') w.toggleEffects();
+      return w.settings.fx;
+    });
+    const light = await measureFxLoad(185);
+    check(
+      'M7 perf: light FX is not slower than full FX',
+      lightMode === 'light' && light.medianMs <= full.medianMs + 1,
+      {
+        full: { medianMs: Number(full.medianMs.toFixed(2)), avgMs: Number(full.avgMs.toFixed(2)), fps: Number(fullFps.toFixed(1)) },
+        light: { medianMs: Number(light.medianMs.toFixed(2)), avgMs: Number(light.avgMs.toFixed(2)), fps: Number((light.avgMs ? 1000 / light.avgMs : 0).toFixed(1)) },
+      },
+      'light median frame time <= full median + 1 ms (robust to a one-off Chrome stall)'
+    );
+    check(
+      'M7 perf: light FX still emits effects while clearing',
+      light.effectsSeen >= light.frames - 5 && light.maxPools.particles > 0 && light.clears >= 100,
+      { effectsSeen: light.effectsSeen, frames: light.frames, peakParticles: light.maxPools.particles, clears: light.clears },
+      'effects live on most frames, peak particles > 0'
+    );
+    const restored = await wf(() => {
+      const w = window.__wordfall;
+      if (w.settings.fx !== 'full') w.toggleEffects();
+      return w.settings.fx;
+    });
+    check('M7 perf: full FX mode is restored after the measurements', restored === 'full', restored, "'full'");
+    notes.perf = {
+      full: { frames: full.frames, avgMs: Number(full.avgMs.toFixed(2)), medianMs: Number(full.medianMs.toFixed(2)), fps: Number(fullFps.toFixed(1)), p95Ms: Number(full.p95Ms.toFixed(2)), maxMs: Number(full.maxMs.toFixed(2)), longFrames: full.longFrames, clears: full.clears, maxPools: full.maxPools, caps: full.caps, perf: full.perf },
+      light: { frames: light.frames, avgMs: Number(light.avgMs.toFixed(2)), medianMs: Number(light.medianMs.toFixed(2)), fps: Number((light.avgMs ? 1000 / light.avgMs : 0).toFixed(1)), p95Ms: Number(light.p95Ms.toFixed(2)), maxMs: Number(light.maxMs.toFixed(2)), longFrames: light.longFrames, clears: light.clears, maxPools: light.maxPools },
+    };
+  });
+
   // ═══ Console/page errors are failures ═════════════════════════════════
   check('runtime: no page or console errors', errors.length === 0, errors.slice(0, 10), 'no errors');
 } catch (err) {
@@ -1934,7 +2933,7 @@ try {
 const passed = checks.filter((c) => c.pass).length;
 summary = {
   pass: checks.every((c) => c.pass),
-  version: 'M6',
+  version: 'M7',
   checks,
   failed: checks.filter((c) => !c.pass).map((c) => c.name),
   consoleErrors: errors,

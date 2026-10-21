@@ -84,6 +84,7 @@
         <div class="menu-item" data-menu="view">
           <span class="menu-label"><u>V</u>iew</span>
           <div class="dropdown">
+            <div class="drop-item" data-cmd="effects" id="menuEffects">Effects: Full</div>
             <div class="drop-item" data-cmd="sound" id="menuSound">Sound: On</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="maximize" id="menuMaximize">Maximize</div>
@@ -131,6 +132,8 @@
 
       <div class="client" id="client">
         <canvas id="game"></canvas>
+
+        <div class="fx-overlay" id="fxOverlay" aria-hidden="true"><div class="fx-glow" id="fxGlow"></div><div class="fx-vignette"></div><div class="fx-scanlines"></div><div class="fx-noise"></div></div>
 
         <div class="modal-layer" id="modalLayer">
           <div class="modal-backdrop" id="modalBackdrop"></div>
@@ -251,6 +254,7 @@
                 <tr><td class="key">S</td><td>Draft: skip (+50 × wave points, pressure still rises)</td></tr>
                 <tr><td class="key">F2</td><td>New run</td></tr>
                 <tr><td class="key">Esc</td><td>Pause · resume · close this dialog or a menu</td></tr>
+                <tr><td class="key">View</td><td>Effects: Full / Light (rendering quality)</td></tr>
               </table>
               <p class="fine-print">Words closest to the line may only be typed in order. A wrong key resets the combo.</p>
             </div>
@@ -272,7 +276,7 @@
               </svg>
               <div>
                 <div class="about-head">Wordfall for Windows</div>
-                <div class="about-ver">Version 1.1 · 16-colour edition</div>
+                <div class="about-ver">Version 1.2 · 16-colour edition</div>
                 <p>Read. Commit. Survive.</p>
                 <p class="fine-print">Relay 12 is a night shift you cannot leave. The broadcast is coming apart one word at a time. Patch the receiver, keep the signal alive, and hold the line until Dawn.</p>
                 <p class="fine-print">Boons are clean patches. Gambits overclock the transmitter. Hexes are corrupted packets that slipped through.</p>
@@ -310,6 +314,7 @@
 
       <div class="status-bar" id="statusBar">
         <div class="status-panel grow" id="statusMain">Ready</div>
+        <div class="status-panel" id="statusCombo">Combo: 0.00×</div>
         <div class="status-panel" id="statusScore">Score: 0</div>
         <div class="status-panel" id="statusWave">Wave: 1/12</div>
         <div class="status-panel" id="statusLives">Lives: 1</div>

@@ -894,3 +894,342 @@ body.embedded .app.maximized {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   v1.2 FX shell — overlay, phase juice, state classes.
+   Contract: #app carries inline custom props --fx-combo (0..20),
+   --fx-danger (0..1), --fx-heat (0..5), --fx-lives (0..3), --fx-wave (1..99);
+   body toggles phase-menu/playing/paused/draft/dawn/gameover plus
+   fx-combo-hot, fx-danger, fx-low-life, fx-light and transient fx-milestone.
+   Only transform, opacity and box-shadow are animated. No blur, no modern
+   gradients. The overlay sits above the canvas and below .modal-layer (5).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── FX overlay ──────────────────────────────────────────────────────────── */
+.fx-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s steps(2, end);
+}
+
+.fx-glow,
+.fx-vignette,
+.fx-scanlines,
+.fx-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Gold edge from combo/heat, red edge from danger. Cheap: one static shadow. */
+.fx-glow {
+  box-shadow:
+    inset 0 0 34px rgba(255, 255, 0, calc(var(--fx-combo, 0) * 0.014 + var(--fx-heat, 0) * 0.012)),
+    inset 0 0 52px rgba(255, 0, 0, calc(var(--fx-danger, 0) * 0.22));
+}
+
+.fx-glow::after,
+.fx-vignette::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#fxGlow::after {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), inset 0 0 70px rgba(255, 255, 0, 0.5);
+}
+
+.fx-vignette {
+  box-shadow:
+    inset 0 0 64px rgba(0, 0, 0, 0.5),
+    inset 0 0 12px rgba(0, 0, 0, 0.42);
+}
+
+/* CRT scanlines: one repeating 1px/1px pattern, moved with transform only. */
+.fx-scanlines {
+  top: -4px;
+  height: calc(100% + 4px);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 1px,
+    rgba(0, 0, 0, 0.14) 1px,
+    rgba(0, 0, 0, 0.14) 2px
+  );
+  animation: fx-scan 4s steps(4, end) infinite;
+  will-change: transform;
+}
+
+@keyframes fx-scan {
+  from { transform: translateY(0); }
+  to   { transform: translateY(4px); }
+}
+
+/* Signal fleck: inline 2x2 SVG checker, low opacity, opacity-steps flicker. */
+.fx-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' y='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 4px 4px;
+  image-rendering: pixelated;
+  opacity: 0.03;
+  animation: fx-noise 0.8s steps(2, end) infinite;
+}
+
+@keyframes fx-noise {
+  0%, 100% { opacity: 0.02; }
+  50%      { opacity: 0.045; }
+}
+
+/* ── State: combo / danger / low life ───────────────────────────────────── */
+.fx-combo-hot #fxGlow {
+  box-shadow:
+    inset 0 0 36px rgba(255, 255, 0, min(0.5, calc(0.05 + var(--fx-combo, 0) * 0.022 + var(--fx-heat, 0) * 0.01))),
+    inset 0 0 60px rgba(255, 0, 0, calc(var(--fx-danger, 0) * 0.3));
+}
+
+.fx-danger #fxGlow {
+  box-shadow:
+    inset 0 0 30px rgba(255, 0, 0, min(0.5, calc(0.12 + var(--fx-danger, 0) * 0.3))),
+    inset 0 0 70px rgba(255, 0, 0, calc(var(--fx-danger, 0) * 0.22));
+}
+
+.fx-danger .fx-vignette::after {
+  box-shadow: inset 0 0 34px rgba(255, 0, 0, 0.55);
+  opacity: 0.24;
+}
+
+.fx-low-life .fx-vignette::after {
+  box-shadow: inset 0 0 40px rgba(255, 0, 0, 0.65);
+  opacity: 0.32;
+}
+
+/* Slow red/black title-bar blink while one life is left. */
+.title-bar { position: relative; }
+
+.fx-low-life .title-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #ff0000;
+  opacity: 0;
+  pointer-events: none;
+  animation: fx-title-alarm 1.6s steps(2, end) infinite;
+}
+
+@keyframes fx-title-alarm {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 0.8; }
+}
+
+/* ── Phase states ───────────────────────────────────────────────────────── */
+.phase-paused .fx-overlay,
+.phase-draft .fx-overlay { opacity: 0.85; }
+
+.phase-dawn .fx-overlay { opacity: 0.9; }
+
+.phase-gameover .fx-vignette::after {
+  box-shadow: inset 0 0 42px rgba(255, 0, 0, 0.7), inset 0 0 10px rgba(255, 0, 0, 0.5);
+  animation: fx-red-pulse 1.2s steps(2, end) infinite;
+}
+
+.phase-dawn .fx-vignette::after {
+  box-shadow: inset 0 0 50px rgba(255, 255, 0, 0.45);
+  animation: fx-gold-pulse 2.4s steps(2, end) infinite;
+}
+
+@keyframes fx-red-pulse {
+  0%, 100% { opacity: 0.28; }
+  50%      { opacity: 0.8; }
+}
+
+@keyframes fx-gold-pulse {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 0.55; }
+}
+
+/* One-shot milestone flash. JS adds .fx-milestone to body for ~0.6s. */
+.fx-milestone #fxGlow::after {
+  animation: fx-milestone 0.6s steps(6, end) both;
+}
+
+@keyframes fx-milestone {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* A modal dialog dims the effects layer a touch (Win95 inert frame). */
+#app.modal-open .fx-overlay { opacity: 0.72; }
+
+/* ── Status bar ─────────────────────────────────────────────────────────── */
+.status-bar .status-panel { min-width: 0; }
+
+#statusCombo {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-combo-hot #statusCombo {
+  font-weight: 700;
+  color: #808000;
+  animation: combo-pulse 0.9s steps(2, end) infinite;
+}
+
+.fx-danger #statusCombo { color: #ff0000; }
+
+@keyframes combo-pulse {
+  0%, 100% { box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white); }
+  50%      { box-shadow: inset 1px 1px #808000, inset -1px -1px #ffff00; }
+}
+
+.status-panel.flash-score {
+  animation: flash-score 0.3s steps(2, end) both;
+}
+
+@keyframes flash-score {
+  0%   { box-shadow: inset 0 0 0 24px #ffffff; }
+  100% { box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white); }
+}
+
+/* ── Draft card juice ───────────────────────────────────────────────────── */
+.draft-card {
+  --edge: transparent;
+  box-shadow:
+    inset 4px 0 0 var(--edge),
+    inset 1px 1px var(--white),
+    inset -1px -1px var(--shadow);
+  transition: transform 0.08s steps(2, end);
+}
+
+.draft-card.boon   { --edge: #00a000; }
+.draft-card.gambit { --edge: #808000; }
+.draft-card.hex    { --edge: #800080; }
+
+.draft-card:hover,
+.draft-card:focus-visible {
+  animation: none;
+  transform: translateY(-2px);
+  box-shadow:
+    2px 2px 0 #000000,
+    inset 4px 0 0 var(--edge),
+    inset 1px 1px var(--white),
+    inset -1px -1px var(--shadow);
+}
+
+/* Rarity gets a hard 1px double outline, stepped not smooth. */
+.draft-card:has(.rare),
+.draft-card.rare {
+  outline: 1px solid #800080;
+  outline-offset: -3px;
+}
+
+.draft-card:has(.rare)::after,
+.draft-card.rare::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px solid #c000c0;
+  pointer-events: none;
+  animation: rare-blink 0.9s steps(2, end) infinite;
+}
+
+@keyframes rare-blink {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+/* UPGRADE / NEW chips the Lead may append inside a draft card. */
+.draft-card .tag-new,
+.draft-card .tag-up {
+  align-self: flex-start;
+  padding: 0 3px 1px;
+  background: #ffff00;
+  color: #000000;
+  border: 1px solid #000000;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 11px;
+  letter-spacing: 0.5px;
+}
+
+.draft-card .tag-up { background: #008080; color: #ffffff; }
+
+.draft-card.picked {
+  outline: 2px solid #ffff00;
+  outline-offset: -3px;
+  animation: draft-picked 0.22s steps(3, end) both;
+}
+
+@keyframes draft-picked {
+  0%   { transform: translateY(0); box-shadow: inset 0 0 0 3px #ffffff; }
+  50%  { transform: translateY(-3px); }
+  100% { transform: translateY(0); box-shadow: inset 0 0 0 3px #ffff00; }
+}
+
+/* ── Dialog polish ──────────────────────────────────────────────────────── */
+.dialog-title { position: relative; overflow: hidden; }
+
+.dialog.show .dialog-title::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #ffffff;
+  opacity: 0.4;
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: dialog-sweep 0.18s steps(4, end) both;
+}
+
+@keyframes dialog-sweep {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* ── Reduced-effects mode (.fx-light toggled by View > Effects) ─────────── */
+.fx-light .fx-scanlines,
+.fx-light .fx-noise { display: none; }
+
+.fx-light #fxGlow { box-shadow: none; }
+
+.fx-light .fx-vignette {
+  box-shadow:
+    inset 0 0 28px rgba(0, 0, 0, 0.38),
+    inset 0 0 8px rgba(0, 0, 0, 0.3);
+}
+
+.fx-light #fxGlow::after,
+.fx-light .fx-vignette::after { animation: none !important; }
+
+/* ── Accessibility ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .fx-scanlines,
+  .fx-noise { animation: none !important; }
+
+  .fx-noise { opacity: 0.02; }
+
+  #fxGlow::after,
+  .fx-vignette::after,
+  .fx-low-life .title-bar::after,
+  .fx-combo-hot #statusCombo,
+  .status-panel.flash-score,
+  .draft-card.picked,
+  .draft-card:has(.rare)::after,
+  .draft-card.rare::after,
+  .dialog.show .dialog-title::after { animation: none !important; }
+
+  .dialog.show { animation: none; }
+
+  .draft-card:nth-child(n) { animation: none; }
+
+  .fx-overlay,
+  .draft-card { transition: none; }
+}
