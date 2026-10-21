@@ -1,9 +1,10 @@
-# Wordfall: Design Spec (v2)
+# Wordfall: Design Spec (v2.1)
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1–M5 implemented**, presented as a Windows 95-era desktop application (browser
-and native Windows build). M5 numbers, tuning notes and deviations are in §9.
+Status: **M1–M6 implemented**, shipped as v1.1, presented as a Windows 95-era desktop
+application (browser and native Windows build). M5 numbers, tuning notes and deviations
+are in §9; the M6 additions and their measured numbers are in §10.
 
 ## 1. Pillar
 
@@ -35,6 +36,29 @@ flowchart LR
 - **Dawn:** finishing wave 12 wins the run. Play continues in endless mode with a score-only goal. Without this, the game has no ending.
 - **Target run length:** 8 to 12 minutes for a 60 WPM player.
 
+### 2.1 Pause, records, seeds and run stats (M6)
+
+- **Pause is a phase** (`paused`). `Esc` while playing pauses; `Esc` or `Enter` resumes, and
+  Game → Pause/Resume is the mouse path. Printable letters always type — a typing game
+  cannot spend a letter on a hotkey. The board and the *playing-time* clock freeze while
+  paused; the pause dialog shows `Seed N · MM:SS played`. Minimize auto-pauses, and restore
+  resumes only that minimize-induced pause, never a pause the player asked for.
+- **Run stats:** each run tracks correct letters, wrong keys (shield-eaten wrong keys
+  included), seconds spent in the `playing` phase, and its seed. The game-over and Dawn
+  dialogs show
+  `wave · words cleared · best combo · WPM · accuracy% · MM:SS · Seed N`.
+  WPM = correct letters / 5 per minute of playing time; accuracy = correct /
+  (correct + wrong keys). **Retry Seed** on the game-over dialog starts a new run on the
+  same seed.
+- **Records** are lifetime and per machine: `{runs, dawns, bestScore, bestWave,
+  bestCombo, words, fastestDawnSec}` in `localStorage` key `wordfall.records`, written
+  exactly once when a run ends (game over or Dawn), and migrated from the old
+  `wordfall.best` key. Game → Records… shows them; the welcome dialog keeps showing the
+  record best score. Headless tuning sweeps do not touch the record book.
+- **Settings:** `wordfall.settings` (`{muted}`) persists the sound toggle.
+- **Seeded runs:** `reset(seed?)` seeds the PRNG deterministically, so a seed reproduces
+  the same run. The headless bot drives runs through the same path.
+
 ## 3. Scoring
 
 ```
@@ -57,7 +81,7 @@ Cards may only use these. If a card needs something new, add it here first.
 | **Heat** | Count of Hexes held. Feeds `heatMult`. Never goes down. |
 | **Target set** | The words you're allowed to type. Default: the lowest one. |
 | **Lock-on** | When the target set holds more than 1 word, the first correct letter locks onto one word (ties go to the lowest). The lock holds until that word is cleared. |
-| **Pressure** | See Â§2. |
+| **Pressure** | See §2. |
 
 ## 5. Cards
 
@@ -70,7 +94,7 @@ Cards may only use these. If a card needs something new, add it here first.
 - Slot exhaustion: if every card of a slot's type is ineligible, that slot falls back to any other eligible card so the draft still shows three cards. If the whole pool is exhausted the slot is empty (only Skip is available).
 - Auto-clears (**Overclock**) score and count toward Pressure, but do not count toward a wave: a wave is exactly ten player clears.
 
-### 5.2 Card list (12)
+### 5.2 Card list (13)
 
 | Card | Type | Rarity | Effect | Tier II |
 | --- | --- | --- | --- | --- |
@@ -86,8 +110,13 @@ Cards may only use these. If a card needs something new, add it here first.
 | **Tunnel** | Hex | common | Only the next 3 letters of the target (in typing order) are visible | Next 2 |
 | **Ghost** | Hex | common | Each cleared word leaves an inert echo in place for 3 s | none |
 | **Decoy** | Hex | rare | 1 in 8 spawns is a misspelled fake that drops 4.5× faster. While a fake is the lowest word, every key counts as a mistake. Fakes fall through the line harmlessly | 1 in 5 |
+| **Split** | Hex | common | Every 5th spawn also drops a free word. It is a real 3–5 letter word: it scores and counts toward the wave, blocks the words above it while it falls, and costs no life at the line. It spawns even when the queue is full (the Hex's cost) | Every 3rd spawn |
 
-**Cut to backlog:** Split (Â§8.1, Q3). It breaks the spawn queue and lock-on, and nothing in this list depends on it.
+**Split was promoted from the backlog in M6:** it is the fifth Hex and the 13th card, so
+the "all Hexes held" eligibility rule now covers all five. The free word carries
+`word.harmless === true`, renders teal (`COL.splitWord = '#00a0a0'`) with a dotted marker
+above it (fakes are marked below), and is never a fake. Its cadence lives in
+`splitEvery()` (5th spawn at tier I, 3rd at tier II), not in `CFG`.
 
 ### 5.3 Card interactions (defined up front)
 
@@ -105,7 +134,11 @@ Cards may only use these. If a card needs something new, add it here first.
 | Wide Scope II | Wide Scope I is held |
 | Grace | lives held < 3 |
 | Steady Hand | shields held < 3 |
-| Any Hex | the player doesn't already hold all 4 |
+| Any Hex | the player doesn't already hold all 5 |
+
+The Hex rule is generic: it reads the number of Hex cards in `CARD_LIST` (exported as
+`window.__wordfall.hexTotal`), so it stays correct as the pool grows — M6 added Split and
+the check moved from 4 to 5 without a hard-coded list.
 
 ## 6. Decisions log
 
@@ -117,10 +150,14 @@ Cards may only use these. If a card needs something new, add it here first.
 | Wrong key keeps word progress | Kept. First thing to revisit in M5 |
 | Draft trigger = waves of 10 clears | **New** (resolves Q1) |
 | Combo carries through the draft | **New** (resolves Q2) |
-| Split goes to the backlog | **New** (resolves Q3) |
+| Split goes to the backlog | **Resolved in M6** — promoted as the 13th card, Hex / common (§5.2) |
 | Keyboard only, no touch | Kept (Q4 closed) |
 | Dawn win state at wave 12 | **New** |
 | Win95-era presentation, browser + native | **New** (§9) |
+| Pause is a real phase; Esc pauses, Esc/Enter resumes | **New (M6)** — no letter is spent on a hotkey; the run clock freezes (§2.1) |
+| Lifetime records in localStorage, per machine | **New (M6)** — `wordfall.records`; no accounts, no network (§2.1) |
+| Runs carry a visible seed and can be retried | **New (M6)** — seed on pause/game-over/Dawn; Retry Seed replays it (§2.1) |
+| Sound setting persists across launches | **New (M6)** — `wordfall.settings` (§2.1) |
 
 ## 7. Milestones (with acceptance criteria)
 
@@ -130,10 +167,12 @@ Cards may only use these. If a card needs something new, add it here first.
 | **M3 Card set** | Remaining 9 cards, primitives (Shield, Lock-on), eligibility filter, tier II | Smoke test per card through `__wordfall` (force a pick, assert the effect). No card offered while ineligible across 1000 seeded drafts | **Done** |
 | **M4 Feel** | Hit-pause on clear, particles, combo pitch rise, near-miss shake, danger-line audio, card rise animation | Manual playtest checklist. 60 fps held with 12 words + Ghost echoes | **Done** |
 | **M5 Tuning** | Headless bot at 40/60/80 WPM with random picks, plus a word pool of 400+ words | 60 WPM bot, no cards: dies at wave 5 to 7. 60 WPM with picks: reaches Dawn in 30 to 50% of runs. 80 WPM: over 70% | **Done** |
+| **M6 Pause + records + run identity + Split** | `paused` phase and dialog, lifetime Records, WPM/accuracy/run-time/seed stats on game-over and Dawn, Retry Seed, settings persistence, 13th card Split | Smoke test: pause freezes board and clock and resumes via Esc/Enter; records load and save once per finished run; `reset(seed)` is deterministic; the result dialogs carry WPM/accuracy/time/seed; Retry Seed replays the seed; Split spawns a real harmless 3–5 letter word on its cadence and is the fifth Hex. Bot: all M5 cells still pass at 400 seeds | **Done** |
 
 ## 8. Backlog / open questions
 
-1. **Split:** prototype after M5 if the card pool feels thin.
+1. **Split:** **Resolved in M6** — promoted as the 13th card, Hex / common, tier I every
+   5th spawn, tier II every 3rd (§5.2). The measured impact is in §10.
 2. **Meta progression** (unlocking cards between runs): out of scope until after M5.
 3. **Word pool:** **Resolved in M5** — 459 words in `words.js`, 38 of them 10–11 letters.
 
@@ -149,7 +188,8 @@ What shipped vs. this doc, and the numbers that back the M5 "Done when" column.
 | 60 WPM, random picks | Dawn 34.8% (139/400) | Dawn 30–50% |
 | 80 WPM, random picks | Dawn 100% (400/400) | Dawn > 70% |
 
-The default 100-seed run used by the bot's assertions gives median 6, 33% and 100%.
+The default 100-seed run used by the bot's assertions gives median 6, 33% and 100% on the
+M5 build; the M6 re-measure is in §10.
 
 Run-to-run seed blocks vary by a few points; the shipped curve sits mid-band on purpose.
 
@@ -196,4 +236,64 @@ Run-to-run seed blocks vary by a few points; the shipped curve sits mid-band on 
   title bar: the page's title bar drags the window and its buttons post
   `drag`/`min`/`max`/`close` to the host. Build with `win/build.ps1 -Smoke`; output is
   `dist/Wordfall-win64/Wordfall.exe`.
+
+## 10. Implementation notes (M6 / v1.1)
+
+What shipped against §2.1, §5.2 and the M6 milestone, and the numbers behind it. The
+independent M6 acceptance review is [QA-REPORT-M6.md](QA-REPORT-M6.md); the v1.0 review
+`QA-REPORT.md` is kept as a historical record and was not rewritten.
+
+**Measured on the shipped M6 build** (my own fresh runs; the same commands and seed blocks
+as §9, not numbers carried over from M5):
+
+| Cell | 400 seeds (block 1000–1399) | 100 seeds | Target | Result |
+| --- | --- | --- | --- | --- |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 6, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies 100/100; median 6, `{6:78, 7:21, 8:1}` | dies at wave 5–7 | **PASS** |
+| 60 WPM, random picks | Dawn **37.3%** (149/400) | Dawn **40.0%** (40/100) | Dawn 30–50% | **PASS** |
+| 80 WPM, random picks | Dawn **98.8%** (395/400) | Dawn **99.0%** (99/100) | Dawn > 70% | **PASS** |
+
+`node tools/smoke.mjs` on the same build: **133/133 checks pass, 0 page/console errors,
+≈22 s**. It covers pause (board and playing clock frozen, Escape/Enter resume), records
+(localStorage round-trip and save-once-per-run), deterministic `reset(seed)` and Retry
+Seed, the WPM/accuracy/time/seed result line, and Split (real short harmless word on the
+5th/3rd-spawn cadence, typeable and scoring, no life at the line, bypasses `maxWords`,
+never fake). The eligibility sweep re-checks 1050 seeded drafts with 0 violations.
+
+**Pause.** A real `paused` phase. Escape is the only pause key; Escape or Enter resumes;
+printable letters are swallowed while paused (P is a letter, not a resume key). The pause
+dialog shows `Seed N · MM:SS played`, offers Resume (default), Restart Run and Controls…,
+and opening Controls/About from it returns to the pause dialog. Game → Pause/Resume keeps
+the Esc shortcut span and switches its label. `state.runSec` only advances in the
+`playing` phase. Minimize auto-pauses; restore resumes only that minimize-induced pause,
+not a user pause. Modal-open title-bar buttons are visually inert.
+
+**Records.** `wordfall.records` holds `{runs, dawns, bestScore, bestWave, bestCombo, words,
+fastestDawnSec}`, defaults 0, migrated from `wordfall.best`. `recordRun(won)` is called
+exactly once per finished run (game over or Dawn), guarded by `runRecorded`, and is skipped
+while `state.simulating` so bot sweeps never write the player's record book.
+`wordfall.best` is still mirrored for compatibility; the welcome/About best score reads
+`records.bestScore`. The dialog lives in the Game menu only.
+
+**Split.** The free word is drawn from the real pool at 3–5 letters via
+`pickSpawnText(3, 5)`; it is not a fake. It is typeable, scores like a normal clear and
+counts toward the wave; it carries `word.harmless = true` so reaching the line costs no
+life, and it is staged above the queue so while it falls it blocks the words above it —
+that lost reading time is the Hex's cost. It deliberately ignores `maxWords`, so the card
+bites even at a full queue. Teal (`COL.splitWord = '#00a0a0'`) with a dotted marker above
+the word (fake markers stay below). Tier I every 5th spawn, tier II every 3rd, driven by
+`state.spawnCount`; never faked. Hex eligibility is generic over `CARD_LIST`
+(`HEX_TOTAL`, exposed as `__wordfall.hexTotal`), so the rule moved from four Hexes to five
+without a hard-coded list.
+
+**Settings.** `wordfall.settings` stores `{muted}`, loaded at boot and written on every
+sound toggle; the menu label and toolbar button reflect it.
+
+**Deviation / notes.** No `CFG` tuning changed for M6 — the cards changed the random-pick
+mix, which moved the 60/random rate from 34.8% (M5) to 37.3% and 80/random from 100% to
+98.8%; both remain inside their M5 bands. Run length is unchanged (an 80 WPM bot run
+reaches Dawn in ~224 s, 3.7 min mean over 400 seeds). The native shell was rebuilt after
+the web freeze: the published `dist\Wordfall-win64\` passes its own `--smoke` as
+`version:"M6"` / `embeddedMode:true` and embeds the frozen web files (`Wordfall.dll`
+contains the M6 strings). `dist/` is gitignored and regenerated, so a GitHub release must
+attach the built folder rather than rely on the repo.
 

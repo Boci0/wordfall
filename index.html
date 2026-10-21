@@ -71,8 +71,12 @@
         <div class="menu-item" data-menu="game">
           <span class="menu-label"><u>G</u>ame</span>
           <div class="dropdown">
+            <div class="drop-item" data-cmd="pause" id="menuPause"><span id="menuPauseLabel">Pause</span><span class="shortcut">Esc</span></div>
+            <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="reroll" id="menuReroll">Reroll<span class="shortcut">R</span></div>
             <div class="drop-item" data-cmd="skip" id="menuSkip">Skip Draft<span class="shortcut">S</span></div>
+            <div class="drop-sep"></div>
+            <div class="drop-item" data-cmd="records" id="menuRecords">Records…</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="new">Restart Run<span class="shortcut">F2</span></div>
           </div>
@@ -180,7 +184,43 @@
             </div>
             <div class="dialog-buttons">
               <button type="button" tabindex="-1" class="btn default" id="overRetry">Retry</button>
+              <button type="button" tabindex="-1" class="btn" id="overSeed">Retry Seed</button>
               <button type="button" tabindex="-1" class="btn" id="overQuit">Quit</button>
+            </div>
+          </div>
+
+          <!-- Paused -->
+          <div class="dialog dlg-pause" id="dlgPause">
+            <div class="dialog-title"><span>Paused</span></div>
+            <div class="dialog-body pause-body">
+              <div class="pause-seed" id="pauseSeedLine">Seed 0 · 00:00 played</div>
+              <p class="pause-note">Words are frozen. Nothing falls until you resume.</p>
+              <p class="fine-print">Press Esc or Enter to resume. Restart begins a new run at wave 1.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="pauseResume">Resume</button>
+              <button type="button" tabindex="-1" class="btn" id="pauseRestart">Restart Run</button>
+              <button type="button" tabindex="-1" class="btn" id="pauseControls">Controls…</button>
+            </div>
+          </div>
+
+          <!-- Records -->
+          <div class="dialog dlg-records" id="dlgRecords">
+            <div class="dialog-title"><span>Records</span></div>
+            <div class="dialog-body">
+              <table class="records-table">
+                <tr><td>Best score</td><td class="rec-val" id="recBestScore">0</td></tr>
+                <tr><td>Best wave</td><td class="rec-val" id="recBestWave">0</td></tr>
+                <tr><td>Best combo</td><td class="rec-val" id="recBestCombo">0</td></tr>
+                <tr><td>Runs played</td><td class="rec-val" id="recRuns">0</td></tr>
+                <tr><td>Dawns reached</td><td class="rec-val" id="recDawns">0</td></tr>
+                <tr><td>Words cleared</td><td class="rec-val" id="recWords">0</td></tr>
+                <tr><td>Fastest Dawn</td><td class="rec-val" id="recFastest">—</td></tr>
+              </table>
+              <p class="fine-print">Records are kept on this machine. Nothing leaves it.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="recordsOk">OK</button>
             </div>
           </div>
 
@@ -209,7 +249,7 @@
                 <tr><td class="key">R</td><td>Draft: reroll the offer (once per run)</td></tr>
                 <tr><td class="key">S</td><td>Draft: skip (+50 × wave points, pressure still rises)</td></tr>
                 <tr><td class="key">F2</td><td>New run</td></tr>
-                <tr><td class="key">Esc</td><td>Close this dialog / menu</td></tr>
+                <tr><td class="key">Esc</td><td>Pause · resume · close this dialog or a menu</td></tr>
               </table>
               <p class="fine-print">Words closest to the line may only be typed in order. A wrong key resets the combo.</p>
             </div>

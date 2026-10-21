@@ -3,7 +3,8 @@
  * Rule that defines the game: you may only type the word that is currently
  * closest to the ground. Every other word is inert until it becomes a target.
  *
- * M1 core loop, M2 draft + pressure, M3 full card set, M4 feel, M5 tuning hooks.
+ * M1 core loop, M2 draft + pressure, M3 full card set, M4 feel, M5 tuning hooks,
+ * M6 pause, lifetime records, run stats + seeds, and the Split card.
  * Design notes and milestones live in SPEC.md.
  */
 (() => {
@@ -83,6 +84,7 @@
     target: '#ffff00',
     typed: '#00a000',
     fake: '#c000c0',
+    splitWord: '#00a0a0',
     hidden: '#606060',
     echo: 'rgba(128, 128, 128, 0.30)',
     accent: '#ffff00',
@@ -298,6 +300,13 @@
     endless: false,
     simulating: false,
     muted: false,
+    // M6: run identity + per-run stat counters
+    seed: 0,
+    keys: 0,                  // correct letters typed this run
+    mistakes: 0,              // wrong keys this run (shield-eaten included)
+    runSec: 0,                // seconds spent in the 'playing' phase
+    spawnCount: 0,            // successful spawns (drives the Split card)
+    runRecorded: false,
   };
 
   Object.defineProperties(state, {
@@ -306,17 +315,89 @@
     heatMult: { get: () => heatMult(), enumerable: true },
   });
 
-  try {
-    state.best = Number(localStorage.getItem('wordfall.best') || 0) || 0;
-  } catch (e) { /* file:// or privacy mode */ }
+  // ─── Persistence: best score, lifetime records, settings ─────────────────
+  const RECORD_DEFAULTS = {
+    runs: 0,
+    dawns: 0,
+    bestScore: 0,
+    bestWave: 0,
+    bestCombo: 0,
+    words: 0,
+    fastestDawnSec: 0,
+  };
+  const records = Object.assign({}, RECORD_DEFAULTS);
+  const settings = { muted: false };
 
-  function saveBest() {
-    if (state.score <= state.best) return;
-    state.best = state.score;
-    try { localStorage.setItem('wordfall.best', String(state.best)); } catch (e) { /* ignore */ }
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem('wordfall.records');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        for (const key of Object.keys(RECORD_DEFAULTS)) {
+          const v = Number(parsed && parsed[key]);
+          if (Number.isFinite(v) && v > 0) records[key] = v;
+        }
+      }
+      // Migrate the pre-M6 single best-score key.
+      const legacyBest = Number(localStorage.getItem('wordfall.best') || 0) || 0;
+      if (legacyBest > records.bestScore) records.bestScore = legacyBest;
+      const rawSettings = localStorage.getItem('wordfall.settings');
+      if (rawSettings) {
+        const parsed = JSON.parse(rawSettings);
+        if (parsed && typeof parsed.muted === 'boolean') settings.muted = parsed.muted;
+      }
+    } catch (e) { /* file:// or privacy mode */ }
+    state.best = records.bestScore;
+    state.muted = settings.muted;
+  }
+  loadStore();
+
+  function saveStore() {
+    try {
+      localStorage.setItem('wordfall.records', JSON.stringify(records));
+      localStorage.setItem('wordfall.best', String(records.bestScore));
+      localStorage.setItem('wordfall.settings', JSON.stringify({ muted: !!settings.muted }));
+    } catch (e) { /* ignore */ }
   }
 
-  function reset() {
+  // Called exactly once per finished run (game over or Dawn).
+  function recordRun(won) {
+    if (state.runRecorded) return;
+    state.runRecorded = true;
+    // Headless sim sweeps are tuning runs, not the player's record book.
+    if (state.simulating) return;
+    records.runs += 1;
+    if (won) {
+      records.dawns += 1;
+      const sec = Math.max(1, Math.round(state.runSec));
+      if (!records.fastestDawnSec || sec < records.fastestDawnSec) records.fastestDawnSec = sec;
+    }
+    records.bestScore = Math.max(records.bestScore, state.score);
+    records.bestWave = Math.max(records.bestWave, state.wave);
+    records.bestCombo = Math.max(records.bestCombo, state.bestCombo);
+    records.words += state.cleared;
+    state.best = records.bestScore;
+    saveStore();
+  }
+
+  // ─── Run statistics ──────────────────────────────────────────────────────
+  function wpmNow() {
+    if (state.runSec <= 0) return 0;
+    return Math.round((state.keys / 5) / (state.runSec / 60));
+  }
+  function accuracyNow() {
+    const total = state.keys + state.mistakes;
+    return total ? Math.round((state.keys / total) * 100) : 100;
+  }
+  function fmtTime(sec) {
+    const s = Math.max(0, Math.round(Number(sec) || 0));
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function reset(seed) {
+    const chosen = seed == null ? ((Date.now() ^ 0x5f356495) >>> 0) : (Number(seed) >>> 0);
+    state.seed = chosen;
+    setSeed(chosen);
     state.phase = 'playing';
     state.words.length = 0;
     state.echoes.length = 0;
@@ -349,6 +430,11 @@
     state.t = 0;
     state.dawn = false;
     state.endless = false;
+    state.keys = 0;
+    state.mistakes = 0;
+    state.runSec = 0;
+    state.spawnCount = 0;
+    state.runRecorded = false;
     nextId = 1;
   }
 
@@ -413,8 +499,17 @@
         ? '1 in 5 spawns is a misspelled fake. While it is the lowest word, every key is a mistake.'
         : '1 in 8 spawns is a misspelled fake. While it is the lowest word, every key is a mistake.'),
     },
+    {
+      // Promoted from the SPEC backlog after M5: the extra word breaks the
+      // spawn queue (it ignores `maxWords`), which is the cost of the Hex.
+      id: 'split', name: 'Split', type: 'hex', rarity: 'common', maxTier: 2,
+      blurb: (tier) => (tier >= 2
+        ? 'Every 3rd spawn also drops a free word. It scores, but blocks the words above it.'
+        : 'Every 5th spawn also drops a free word. It scores, but blocks the words above it.'),
+    },
   ];
   const CARD_BY_ID = Object.fromEntries(CARD_LIST.map((c) => [c.id, c]));
+  const HEX_TOTAL = CARD_LIST.filter((c) => c.type === 'hex').length;
 
   function heldTier(id) {
     return state.deck[id] || 0;
@@ -474,6 +569,10 @@
     const d = heldTier('decoy');
     return d >= 2 ? 1 / 5 : d >= 1 ? 1 / 8 : 0;
   }
+  function splitEvery() {
+    const sp = heldTier('split');
+    return sp >= 2 ? 3 : sp >= 1 ? 5 : 0;
+  }
 
   function hexCountHeld() {
     let n = 0;
@@ -507,6 +606,34 @@
     return text.slice(0, i) + c + text.slice(i + 1);
   }
 
+  function pickSpawnText(lo, hi) {
+    let pool;
+    if (lo != null && hi != null) {
+      pool = wordsByLength(lo, hi);
+    } else {
+      [lo, hi] = wordRange();
+      pool = wordsByLength(lo, hi);
+    }
+    if (!pool.length) pool = wordsByLength(1, 11);
+    if (!pool.length) return null;
+
+    const onScreen = new Set(state.words.map((w) => w.text));
+    let pickPool = pool.filter((w) => !onScreen.has(w));
+    if (!pickPool.length) pickPool = pool;
+    return pickPool[(rng() * pickPool.length) | 0];
+  }
+
+  // Highest free slot above the viewport: queue words instead of stacking them.
+  function queueTop(exclude) {
+    let y = -CFG.charH - 12;
+    for (const other of state.words) {
+      if (other !== exclude && other.y <= CFG.charH * 2) {
+        y = Math.min(y, other.y - CFG.charH - 8);
+      }
+    }
+    return y;
+  }
+
   function spawnWord(text, opts = {}) {
     text = String(text || '').toLowerCase();
     if (!/^[a-z]{1,20}$/.test(text)) return null;
@@ -526,36 +653,38 @@
     return word;
   }
 
+  // Split's free word: real only, short (cheap to type), and it deliberately
+  // ignores `maxWords` so the card actually bites even when the queue is full.
+  function spawnExtra() {
+    const text = pickSpawnText(3, 5);
+    if (!text) return null;
+    const word = spawnWord(text, {});
+    if (!word) return null;
+    word.harmless = true;      // paid in reading time, not in lives
+    word.y = queueTop(word);
+    return word;
+  }
+
   function spawn() {
     if (state.words.length >= CFG.maxWords) return null;
 
-    const [lo, hi] = wordRange();
-    let pool = wordsByLength(lo, hi);
-    if (!pool.length) pool = wordsByLength(1, 11);
-    if (!pool.length) return null;
+    const text = pickSpawnText();
+    if (!text) return null;
 
-    const onScreen = new Set(state.words.map((w) => w.text));
-    let pickPool = pool.filter((w) => !onScreen.has(w));
-    if (!pickPool.length) pickPool = pool;
-
-    let text = pickPool[(rng() * pickPool.length) | 0];
+    let spawnText = text;
     let fake = false;
     if (has('decoy') && rng() < decoyChance()) {
       fake = true;
-      text = misspell(text);
+      spawnText = misspell(text);
     }
 
-    const word = spawnWord(text, { fake });
+    const word = spawnWord(spawnText, { fake });
     if (!word) return null;
+    word.y = queueTop(word);
 
-    // Queue above the viewport instead of stacking words on top of each other.
-    let y = -CFG.charH - 12;
-    for (const other of state.words) {
-      if (other !== word && other.y <= CFG.charH * 2) {
-        y = Math.min(y, other.y - CFG.charH - 8);
-      }
-    }
-    word.y = y;
+    state.spawnCount += 1;
+    const every = splitEvery();
+    if (every > 0 && state.spawnCount % every === 0) spawnExtra();
     return word;
   }
 
@@ -721,7 +850,7 @@
   function cardEligible(card) {
     const held = heldTier(card.id);
     if (held >= card.maxTier) return false;              // maxed out (no-tier cards leave after one pick)
-    if (card.type === 'hex' && held === 0 && hexCountHeld() >= 4) return false;
+    if (card.type === 'hex' && held === 0 && hexCountHeld() >= HEX_TOTAL) return false;
     if (card.id === 'grace' && state.lives >= CFG.maxLives) return false;
     if (card.id === 'steady-hand' && state.shieldMax >= CFG.maxShields) return false;
     if (card.id === 'longshot' && wordRange()[1] < 7) return false;
@@ -829,7 +958,7 @@
     state.phase = 'dawn';
     state.dawn = true;
     state.lockWord = null;
-    saveBest();
+    recordRun(true);
     playDawn();
   }
 
@@ -867,6 +996,7 @@
     if (nextChar(word) === ch) {
       state.lockWord = word;                             // lock-on: holds until this word is cleared
       word.progress += 1;
+      state.keys += 1;
       if (word.progress >= word.text.length) {
         clearWord(word, false);
       } else {
@@ -878,6 +1008,7 @@
   }
 
   function mistake() {
+    state.mistakes += 1;
     if (state.shields > 0) {
       state.shields -= 1;                                // Shield eats the hit, combo kept, no flash
       state.blockFlash = 0.18;
@@ -893,6 +1024,7 @@
   function hitGround(word) {
     removeWord(word);
     if (word.fake) return;                               // fakes fall through harmlessly
+    if (word.harmless) return;                           // Split's free word costs no life
 
     state.combo = 0;
     state.flash = CFG.mistakeFlash;
@@ -904,12 +1036,13 @@
 
   function gameOver() {
     state.phase = 'gameover';
-    saveBest();
+    recordRun(false);
   }
 
   // ─── Update ───────────────────────────────────────────────────────────────
   function update(dt) {
     state.t += dt;
+    if (state.phase === 'playing') state.runSec += dt;
     state.flash = Math.max(0, state.flash - dt);
     state.blockFlash = Math.max(0, state.blockFlash - dt);
     state.shake = Math.max(0, state.shake - dt * 1.7);
@@ -1131,6 +1264,7 @@
       let color = COL.wordIdle;
       if (inSet) color = COL.wordSet;
       if (w.fake) color = COL.fake;
+      if (w.harmless) color = COL.splitWord;
       if (isTarget) color = urgent ? COL.danger : COL.target;
 
       for (let i = 0; i < w.text.length; i++) {
@@ -1150,7 +1284,16 @@
       if (isTarget) drawTargetMarker(w, x, urgent);
       else if (inSet) drawSetMarker(w, x);
       if (w.fake) drawFakeMarker(w, x);
+      if (w.harmless) drawHarmlessMarker(w, x);
     }
+  }
+
+  // Split's free word: dotted teal rule ABOVE the word (fakes are marked below).
+  function drawHarmlessMarker(w, x) {
+    ctx.save();
+    ctx.fillStyle = COL.splitWord;
+    for (let px = x; px < x + w.w; px += 3) ctx.fillRect(px, w.y - 4, 2, 1);
+    ctx.restore();
   }
 
   function drawTargetMarker(w, x, urgent) {
@@ -1215,6 +1358,9 @@
     menuSound: $('menuSound'),
     menuReroll: $('menuReroll'),
     menuSkip: $('menuSkip'),
+    menuPause: $('menuPause'),
+    menuPauseLabel: $('menuPauseLabel'),
+    menuRecords: $('menuRecords'),
     menuMaximize: $('menuMaximize'),
     deckField: $('deckField'),
     modalLayer: $('modalLayer'),
@@ -1235,6 +1381,8 @@
       draft: $('dlgDraft'),
       gameover: $('dlgGameover'),
       dawn: $('dlgDawn'),
+      pause: $('dlgPause'),
+      records: $('dlgRecords'),
       controls: $('dlgControls'),
       about: $('dlgAbout'),
       quit: $('dlgQuit'),
@@ -1249,6 +1397,16 @@
     },
     over: { score: $('overScore'), stats: $('overStats'), deck: $('overDeck') },
     dawn: { score: $('dawnScore'), stats: $('dawnStats'), deck: $('dawnDeck') },
+    pause: { seed: $('pauseSeedLine') },
+    records: {
+      bestScore: $('recBestScore'),
+      bestWave: $('recBestWave'),
+      bestCombo: $('recBestCombo'),
+      runs: $('recRuns'),
+      dawns: $('recDawns'),
+      words: $('recWords'),
+      fastest: $('recFastest'),
+    },
   };
 
   let uiPhase = null;
@@ -1281,6 +1439,7 @@
 
   function phaseDialog() {
     if (state.phase === 'menu') return 'welcome';
+    if (state.phase === 'paused') return 'pause';
     if (state.phase === 'draft') return 'draft';
     if (state.phase === 'gameover') return 'gameover';
     if (state.phase === 'dawn') return 'dawn';
@@ -1301,6 +1460,7 @@
       state.phase = 'paused';
     }
     if (name === 'about') populateAbout();
+    if (name === 'records') populateRecords();
     if (name === 'controls') ensureAudio();
     showDialog(name);
   }
@@ -1389,11 +1549,15 @@
     const parts = kind === 'dawn' ? ui.dawn : ui.over;
     setText(parts.score, String(state.score));
     const wave = Math.min(state.wave, CFG.wavesPerRun);
+    const wordsLabel = state.cleared === 1 ? 'word' : 'words';
+    const statLine =
+      `${wpmNow()} WPM \u00b7 ${accuracyNow()}% accuracy \u00b7 ${fmtTime(state.runSec)}` +
+      ` \u00b7 Seed ${state.seed}`;
     setText(
       parts.stats,
       kind === 'dawn'
-        ? `Run won · 12 waves cleared · ${state.cleared} words cleared · best combo ${state.bestCombo}`
-        : `Wave ${wave} · ${state.cleared} words cleared · best combo ${state.bestCombo} · best ${state.best}`
+        ? `Run won \u00b7 12 waves cleared \u00b7 ${state.cleared} ${wordsLabel} cleared \u00b7 best combo ${state.bestCombo} \u00b7 ${statLine}`
+        : `Wave ${wave} \u00b7 ${state.cleared} ${wordsLabel} cleared \u00b7 best combo ${state.bestCombo} \u00b7 ${statLine}`
     );
     setText(parts.deck, 'Cards: ' + heldCardsText());
   }
@@ -1402,10 +1566,27 @@
     setText(ui.aboutBest, String(state.best));
   }
 
+  function populateRecords() {
+    setText(ui.records.bestScore, String(records.bestScore));
+    setText(ui.records.bestWave, String(records.bestWave));
+    setText(ui.records.bestCombo, String(records.bestCombo));
+    setText(ui.records.runs, String(records.runs));
+    setText(ui.records.dawns, String(records.dawns));
+    setText(ui.records.words, String(records.words));
+    setText(ui.records.fastest, records.fastestDawnSec ? fmtTime(records.fastestDawnSec) : '\u2014');
+  }
+
+  function populatePause() {
+    setText(ui.pause.seed, `Seed ${state.seed} \u00b7 ${fmtTime(state.runSec)} played`);
+  }
+
   // ── menu / toolbar state ─────────────────────────────────────────────────
   function updateMenuStates() {
     setClass(ui.menuReroll, 'disabled', !(state.phase === 'draft' && state.rerollsLeft > 0));
     setClass(ui.menuSkip, 'disabled', state.phase !== 'draft');
+    const canPause = state.phase === 'playing' || state.phase === 'paused';
+    setText(ui.menuPauseLabel, state.phase === 'paused' ? 'Resume' : 'Pause');
+    setClass(ui.menuPause, 'disabled', !canPause);
     setText(ui.menuSound, state.muted ? 'Sound: Off' : 'Sound: On');
     setText(ui.menuMaximize, ui.app.classList.contains('maximized') ? 'Restore' : 'Maximize');
     setClass(ui.soundBtn, 'off', !!state.muted);
@@ -1439,12 +1620,14 @@
 
   function updateTitle() {
     let label = 'Untitled';
-    if (state.phase === 'playing' || state.phase === 'paused') {
+    if (state.phase === 'paused') {
+      label = 'Paused';
+    } else if (state.phase === 'playing') {
       label = `Wave ${Math.min(state.wave, CFG.wavesPerRun)}` + (state.endless ? ' (endless)' : '');
     } else if (state.phase === 'draft') label = 'Draft';
     else if (state.phase === 'dawn') label = 'Dawn';
     else if (state.phase === 'gameover') label = 'Signal Lost';
-    const title = `Wordfall — ${label}`;
+    const title = `Wordfall \u2014 ${label}`;
     setText(ui.titleText, title);
     setText(ui.taskText, title);
   }
@@ -1455,12 +1638,12 @@
 
   function onPhaseChange() {
     if (state.phase === 'draft') populateDraft();
+    if (state.phase === 'paused') populatePause();
     if (state.phase === 'gameover') populateResult('gameover');
     if (state.phase === 'dawn') populateResult('dawn');
     if (state.phase === 'menu') populateWelcome();
     updateMenuStates();
-    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit') return;
-    if (state.phase === 'paused') return;
+    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') return;
     syncToPhase();
   }
 
@@ -1494,18 +1677,37 @@
     if (item) item.classList.add('open');
   }
 
-  function startNewRun() {
+  function pauseGame() {
+    if (state.phase !== 'playing') return false;
+    closeMenus();
+    ui.startMenu.classList.remove('open');
+    resumePhase = null;
+    state.phase = 'paused';
+    syncUi(true);
+    return true;
+  }
+
+  function resumeGame() {
+    if (state.phase !== 'paused') return false;
+    state.phase = 'playing';
+    syncUi(true);
+    return true;
+  }
+
+  function startNewRun(seed) {
     closeMenus();
     ui.startMenu.classList.remove('open');
     resumePhase = null;
     hideDialogs();
     ensureAudio();
-    reset();
+    reset(seed);
     syncUi(true);
   }
 
   function toggleSound() {
     state.muted = !state.muted;
+    settings.muted = state.muted;
+    saveStore();
     if (!state.muted) ensureAudio();
     updateMenuStates();
     setClass(ui.soundBtn, 'off', !!state.muted);
@@ -1585,6 +1787,11 @@
         if (state.phase === 'draft') skip();
         break;
       case 'sound': toggleSound(); break;
+      case 'pause':
+        if (state.phase === 'playing') pauseGame();
+        else if (state.phase === 'paused') resumeGame();
+        break;
+      case 'records': openOverlay('records'); break;
       case 'maximize': toggleMaximize(); break;
       case 'controls': openOverlay('controls'); break;
       case 'about': openOverlay('about'); break;
@@ -1622,11 +1829,11 @@
     click('btnMax', toggleMaximize);
     click('btnClose', onClose);
     ui.titleBar.addEventListener('dblclick', (event) => {
-      if (!event.target.closest('.title-btn')) toggleMaximize();
+      if (!event.target.closest('.title-btn, .title-buttons')) toggleMaximize();
     });
     let drag = null;
     ui.titleBar.addEventListener('mousedown', (event) => {
-      if (event.target.closest('.title-btn')) return;
+      if (event.target.closest('.title-btn, .title-buttons')) return;
       if (nativeHost) { hostMessage('drag'); return; }
       const rect = ui.app.getBoundingClientRect();
       drag = { dx: event.clientX - rect.left, dy: event.clientY - rect.top };
@@ -1714,17 +1921,22 @@
     click('welcomeControls', () => openOverlay('controls'));
     click('controlsOk', closeOverlay);
     click('aboutOk', closeOverlay);
+    click('recordsOk', closeOverlay);
     click('quitNo', closeOverlay);
     click('quitYes', quitConfirmed);
-    click('overRetry', startNewRun);
+    click('overRetry', () => startNewRun());
+    click('overSeed', () => startNewRun(state.seed));
     click('overQuit', onClose);
+    click('pauseResume', resumeGame);
+    click('pauseRestart', () => startNewRun());
+    click('pauseControls', () => openOverlay('controls'));
     click('dawnKeep', () => {
       ensureAudio();
       continueEndless();
     });
     click('dawnNew', startNewRun);
     ui.modalBackdrop.addEventListener('click', () => {
-      if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit') closeOverlay();
+      if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') closeOverlay();
     });
     ui.draft.reroll.addEventListener('click', () => {
       ensureAudio();
@@ -1842,8 +2054,8 @@
 
     ensureAudio();
 
-    // A user-opened dialog (Controls / About / Quit) captures Enter and Esc.
-    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit') {
+    // A user-opened dialog (Controls / About / Records / Quit) captures Enter and Esc.
+    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') {
       if (event.key === 'Escape' || event.key === 'Enter') {
         event.preventDefault();
         closeOverlay();
@@ -1857,9 +2069,28 @@
       return;
     }
 
+    // Paused: Escape / Enter resume. Every other key is swallowed so the board
+    // stays frozen and no letters leak into the next run.
+    if (state.phase === 'paused') {
+      if (event.key === 'Escape' || event.key === 'Enter') {
+        if (event.key === 'Escape') {
+          closeMenus();
+          ui.startMenu.classList.remove('open');
+        }
+        event.preventDefault();
+        resumeGame();
+        return;
+      }
+      event.preventDefault();
+      return;
+    }
+
+    // Escape pauses; a printable letter can never be a hotkey in a typing game.
     if (event.key === 'Escape') {
+      const hadMenu = !!document.querySelector('.menu-item.open') || ui.startMenu.classList.contains('open');
       closeMenus();
       ui.startMenu.classList.remove('open');
+      if (state.phase === 'playing' && !hadMenu) pauseGame();
       event.preventDefault();
       return;
     }
@@ -1919,8 +2150,7 @@
     const dt = 1 / 60;
 
     const prevSim = state.simulating;
-    setSeed(seed);
-    reset();
+    reset(seed);
     state.simulating = true;
     if (Array.isArray(opts.grant)) {
       for (const item of opts.grant) {
@@ -2004,11 +2234,24 @@
 
   // ─── Debug / test hook ────────────────────────────────────────────────────
   window.__wordfall = {
-    version: 'M5',
+    version: 'M6',
     state,
     CFG,
     CARDS: CARD_LIST,
+    records,
+    settings,
     reset,
+    newRun: reset,
+    pause: pauseGame,
+    resume: resumeGame,
+    stats: () => ({
+      keys: state.keys,
+      mistakes: state.mistakes,
+      runSec: state.runSec,
+      wpm: wpmNow(),
+      accuracy: accuracyNow(),
+    }),
+    hexTotal: HEX_TOTAL,
     typeLetter,
     targetWord,
     targetSet,

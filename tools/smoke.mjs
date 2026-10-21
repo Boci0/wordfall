@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
  * Wordfall end-to-end smoke test (M1 core loop + M2 draft/pressure + M3 cards
- * + M4 screenshots). Drives the real game in headless Chrome through the
- * `window.__wordfall` debug hook; every assertion runs against live state.
+ * + M4 screenshots + M5 tuning hooks + M6 pause/records/stats/seeds/Split).
+ * Drives the real game in headless Chrome through the `window.__wordfall`
+ * debug hook; every assertion runs against live state.
  *
  * Run from the wordfall/ folder:
  *   node tools/smoke.mjs
- *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M5" window
+ *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M6" window
  *
  * Prints a JSON summary on stdout; progress goes to stderr. Screenshots land in
  * shots/. Exits 0 only if every check passes and the page logged no errors.
@@ -66,7 +67,7 @@ function parseArgs(argv) {
         process.exit(2);
       }
     } else if (arg === '-h' || arg === '--help') {
-      console.log('Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === \'M5\' (default 900).');
+      console.log('Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === \'M6\' (default 900).');
       process.exit(0);
     } else {
       console.error(`smoke: unknown argument: ${arg}`);
@@ -79,7 +80,7 @@ const opts = parseArgs(process.argv);
 
 // ─── Page helpers ───────────────────────────────────────────────────────────
 
-async function waitForM5() {
+async function waitForM6() {
   const deadline = Date.now() + opts.waitSec * 1000;
   let last = 'window.__wordfall missing';
   for (;;) {
@@ -94,7 +95,7 @@ async function waitForM5() {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M5') {
+    if (version === 'M6') {
       page = candidate;
       return;
     }
@@ -102,7 +103,7 @@ async function waitForM5() {
     else if (pageErrors.length) last = `no hook; pageerror: ${pageErrors[0]}`;
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
-      throw new Error(`game.js never exposed window.__wordfall.version === 'M5' within ${opts.waitSec}s (last: ${last})`);
+      throw new Error(`game.js never exposed window.__wordfall.version === 'M6' within ${opts.waitSec}s (last: ${last})`);
     }
     log(`game not ready (${last}); retrying in ${RETRY_WAIT_MS / 1000}s`);
     await sleep(RETRY_WAIT_MS);
@@ -142,8 +143,91 @@ async function stateInfo() {
       particles: s.particles.length,
       best: s.best,
       bestSaved: (() => { try { return Number(localStorage.getItem('wordfall.best') || 0); } catch (e) { return null; } })(),
+      // M6: run identity + lifetime records
+      seed: s.seed,
+      keys: s.keys,
+      mistakes: s.mistakes,
+      runSec: s.runSec,
+      records: w.records ? Object.assign({}, w.records) : null,
+      storedRecords: (() => { try { return JSON.parse(localStorage.getItem('wordfall.records') || 'null'); } catch (e) { return null; } })(),
     };
   });
+}
+
+/** DOM/UI snapshot for the M6 dialogs and menu items. */
+async function domInfo() {
+  return wf(() => {
+    const txt = (id) => {
+      const el = document.getElementById(id);
+      return el ? String(el.textContent || '').trim() : null;
+    };
+    const dialog = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return { exists: false, show: false, text: null };
+      const cs = getComputedStyle(el);
+      return {
+        exists: true,
+        show: el.classList.contains('show') && cs.display !== 'none' && cs.visibility !== 'hidden',
+        text: String(el.textContent || '').trim(),
+      };
+    };
+    const menu = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const shortcut = el.querySelector('.shortcut');
+      return {
+        text: String(el.textContent || '').trim(),
+        label: (el.childNodes[0] && el.childNodes[0].textContent || '').trim(),
+        shortcut: shortcut ? String(shortcut.textContent || '').trim() : null,
+        disabled: el.classList.contains('disabled'),
+        exists: true,
+      };
+    };
+    return {
+      phase: window.__wordfall.state.phase,
+      statusMain: txt('statusMain'),
+      titleText: txt('titleText'),
+      taskText: txt('taskText'),
+      dlgPause: dialog('dlgPause'),
+      dlgRecords: dialog('dlgRecords'),
+      dlgControls: dialog('dlgControls'),
+      modalOpen: !!document.querySelector('#modalLayer.open'),
+      pauseSeedLine: txt('pauseSeedLine'),
+      pauseNote: (() => {
+        const el = document.querySelector('#dlgPause .pause-note');
+        return el ? String(el.textContent || '').trim() : null;
+      })(),
+      pauseButtons: ['pauseResume', 'pauseRestart', 'pauseControls'].map((id) => ({
+        id,
+        exists: !!document.getElementById(id),
+        text: txt(id),
+        isDefault: !!(document.getElementById(id) && document.getElementById(id).classList.contains('default')),
+      })),
+      menuPause: menu('menuPause'),
+      menuRecords: menu('menuRecords'),
+      overSeed: { exists: !!document.getElementById('overSeed'), text: txt('overSeed') },
+      records: {
+        bestScore: txt('recBestScore'),
+        bestWave: txt('recBestWave'),
+        bestCombo: txt('recBestCombo'),
+        runs: txt('recRuns'),
+        dawns: txt('recDawns'),
+        words: txt('recWords'),
+        fastest: txt('recFastest'),
+      },
+    };
+  });
+}
+
+/** Reload the page in the same context (localStorage survives) and wait for M6 again. */
+async function reloadGame() {
+  await page.reload({ waitUntil: 'load', timeout: 20000 });
+  await page.waitForFunction(
+    () => window.__wordfall && window.__wordfall.version === 'M6',
+    null,
+    { timeout: 20000 }
+  );
+  await sleep(150);
 }
 
 async function resetRun(grants = []) {
@@ -238,15 +322,15 @@ let summary = null;
 try {
   log('launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  log(`waiting for ${INDEX_URL} to expose version M5…`);
-  await waitForM5();
-  log('game.js M5 is live — running checks');
+  log(`waiting for ${INDEX_URL} to expose version M6…`);
+  await waitForM6();
+  log('game.js M6 is live — running checks');
 
   page.on('pageerror', (e) => errors.push('pageerror: ' + String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
   const version = await wf(() => window.__wordfall.version);
-  check('contract: window.__wordfall.version === M5', version === 'M5', version, "'M5'");
+  check('contract: window.__wordfall.version === M6', version === 'M6', version, "'M6'");
 
   // ═══ M1: core loop ═════════════════════════════════════════════════════
   await section('M1 core loop', async () => {
@@ -491,16 +575,18 @@ try {
     'Tunnel': { id: 'tunnel', type: 'hex', rarity: 'common', maxTier: 2 },
     'Ghost': { id: 'ghost', type: 'hex', rarity: 'common', maxTier: 1 },
     'Decoy': { id: 'decoy', type: 'hex', rarity: 'rare', maxTier: 2 },
+    'Split': { id: 'split', type: 'hex', rarity: 'common', maxTier: 2 },
   };
   const C = {}; // card name -> id
   const catalogue = await wf(() => ({
     cards: window.__wordfall.CARDS.map((c) => ({
       id: c.id, name: c.name, type: c.type, rarity: c.rarity, maxTier: c.maxTier, blurbType: typeof c.blurb,
     })),
+    hexTotal: window.__wordfall.hexTotal,
   }));
   {
     const problems = [];
-    if (catalogue.cards.length !== 12) problems.push(`expected 12 cards, got ${catalogue.cards.length}`);
+    if (catalogue.cards.length !== 13) problems.push(`expected 13 cards, got ${catalogue.cards.length}`);
     const ids = catalogue.cards.map((c) => c.id);
     if (new Set(ids).size !== ids.length) problems.push('duplicate card ids');
     for (const [name, expected] of Object.entries(EXPECTED_CARDS)) {
@@ -512,10 +598,20 @@ try {
       }
     }
     check(
-      'M3: CARDS list matches the 12 SPEC cards (id/type/rarity/maxTier)',
+      'M3: CARDS list matches the 13 SPEC cards (id/type/rarity/maxTier)',
       problems.length === 0,
       { count: catalogue.cards.length, problems },
-      '12 cards, exact ids/types/rarities/maxTier'
+      '13 cards, exact ids/types/rarities/maxTier'
+    );
+    const hexCards = catalogue.cards.filter((c) => c.type === 'hex');
+    check(
+      'M6 cards: Split is the fifth Hex and hexTotal is generic',
+      hexCards.length === 5 &&
+      !!C['Split'] &&
+      catalogue.hexTotal === 5 &&
+      !!catalogue.cards.find((c) => c.id === C['Split'] && c.blurbType === 'function'),
+      { hexCards: hexCards.map((c) => c.id), hexTotal: catalogue.hexTotal, split: C['Split'] },
+      '5 Hex cards incl split, window.__wordfall.hexTotal === 5'
     );
   }
 
@@ -930,7 +1026,7 @@ try {
   }
 
   // ═══ M3: all four Hexes raise heat (and score) by tier ═════════════════
-  const hexNames = ['Reverse', 'Tunnel', 'Ghost', 'Decoy'].filter((n) => C[n]);
+  const hexNames = ['Reverse', 'Tunnel', 'Ghost', 'Decoy', 'Split'].filter((n) => C[n]);
   for (const name of hexNames) {
     await section(`M3 ${name} heat`, async () => {
       const t1 = await wf(({ id }) => {
@@ -971,7 +1067,7 @@ try {
     });
   }
 
-  if (hexNames.length === 4) {
+  if (hexNames.length === 5) {
     await section('M3 Hex heat aggregate', async () => {
       const r = await wf(({ ids }) => {
         const w = window.__wordfall;
@@ -981,9 +1077,9 @@ try {
         w.grant(ids[1], 2); // tunnel
         w.grant(ids[3], 2); // decoy
         return { tier1, tier2: { heat: w.heat(), heatMult: w.heatMult() } };
-      }, { ids: [C['Reverse'], C['Tunnel'], C['Ghost'], C['Decoy']] });
-      check('M3 Hex heat: all four Hexes stack (heat 4, heatMult 2)', r.tier1.heat === 4 && approx(r.tier1.heatMult, 2), r.tier1, 'heat 4, heatMult 2');
-      check('M3 Hex heat: tier II Hexes count twice (heat 6, heatMult 2.5)', r.tier2.heat === 6 && approx(r.tier2.heatMult, 2.5), r.tier2, 'heat 6, heatMult 2.5');
+      }, { ids: [C['Reverse'], C['Tunnel'], C['Ghost'], C['Decoy'], C['Split']] });
+      check('M3 Hex heat: all five Hexes stack (heat 5, heatMult 2.25)', r.tier1.heat === 5 && approx(r.tier1.heatMult, 2.25), r.tier1, 'heat 5, heatMult 2.25');
+      check('M3 Hex heat: tier II Hexes count twice (heat 7, heatMult 2.75)', r.tier2.heat === 7 && approx(r.tier2.heatMult, 2.75), r.tier2, 'heat 7, heatMult 2.75');
       const run = await clearWithHook('ember');
       const expected = Math.round(5 * 10 * run.before.comboMult * run.before.heatMult);
       check('M3 Hex heat: stack multiplies the score', run.cleared && scoreDelta(run) === expected, { delta: scoreDelta(run), expected, before: run.before }, `expected ${expected}`);
@@ -993,6 +1089,7 @@ try {
   // ═══ M3: eligibility filter over seeded drafts ═════════════════════════
   await section('M3 draft eligibility', async () => {
     const allGrants = Object.values(EXPECTED_CARDS).map((c) => ({ id: c.id, tier: c.maxTier }));
+    const hexCardIds = Object.values(EXPECTED_CARDS).filter((c) => c.type === 'hex').map((c) => c.id);
     const scenarios = [
       { name: 'fresh', count: 200, cleared: 0, seedBase: 10000, grants: [] },
       { name: 'lives3', count: 150, cleared: 0, seedBase: 20000, grants: [], lives: 3 },
@@ -1000,8 +1097,9 @@ try {
       { name: 'high-pressure', count: 150, cleared: 200, seedBase: 40000, grants: [] },
       { name: 'scope1', count: 150, cleared: 30, seedBase: 50000, grants: [{ id: C['Wide Scope'], tier: 1 }] },
       { name: 'maxed', count: 100, cleared: 200, seedBase: 60000, grants: allGrants },
+      { name: 'all-hexes', count: 150, cleared: 100, seedBase: 70000, grants: hexCardIds.map((id) => ({ id, tier: 1 })) },
     ];
-    const result = await wf(({ scenarios, ids }) => {
+    const result = await wf(({ scenarios, ids, hexIds }) => {
       const w = window.__wordfall;
       const violations = [];
       const offeredCount = {};
@@ -1010,7 +1108,6 @@ try {
       let drafts = 0;
       let nullSlotCount = 0;
       let offerCount = 0;
-      const hexIds = [ids['Reverse'], ids['Tunnel'], ids['Ghost'], ids['Decoy']];
       const violate = (rule, detail) => {
         if (violations.length < 200) violations.push(Object.assign({ rule }, detail));
       };
@@ -1057,7 +1154,7 @@ try {
             if (card.id === ids['Grace'] && snap.lives >= 3) violate('Grace is not offered when lives >= 3', { scenario: sc.name, seed: sc.seedBase + i, lives: snap.lives });
             if (card.id === ids['Steady Hand'] && snap.shieldMax >= 3) violate('Steady Hand is not offered when shieldMax >= 3', { scenario: sc.name, seed: sc.seedBase + i, shieldMax: snap.shieldMax });
             if (card.id === ids['Longshot'] && snap.range[1] < 7) violate('Longshot is not offered when the word range max < 7', { scenario: sc.name, seed: sc.seedBase + i, range: snap.range });
-            if (card.type === 'hex' && hexIds.every((id) => (held[id] || 0) >= 1)) violate('a Hex is not offered when all four Hexes are held', { scenario: sc.name, seed: sc.seedBase + i, card: card.id });
+            if (card.type === 'hex' && held[card.id] === 0 && hexIds.every((id) => (held[id] || 0) >= 1)) violate('a new Hex is not offered when every Hex is held', { scenario: sc.name, seed: sc.seedBase + i, card: card.id });
           }
           if (samples.length < 8) samples.push({ scenario: sc.name, offer: offer.map((c) => (c ? { id: c.id, type: c.type, tier: c.tier } : null)) });
           const beforeSkip = { pressure: w.pressure(), draftsTaken: s.draftsTaken };
@@ -1077,34 +1174,36 @@ try {
         scenarioState,
         samples,
       };
-    }, { scenarios, ids: Object.fromEntries(Object.entries(C)) });
+    }, { scenarios, ids: Object.fromEntries(Object.entries(C)), hexIds: hexCardIds });
 
     check(
       'M3 eligibility: no ineligible card offered across seeded drafts',
       result.violationCount === 0,
       { drafts: result.drafts, scenarioCount: scenarios.length, violationCount: result.violationCount, violations: result.violations },
-      '0 violations; 900 seeded beginDraft() offers'
+      '0 violations; 1050 seeded beginDraft() offers'
     );
     check(
-      'M3 eligibility: scenario preconditions (lives 3, shieldMax 3, low/high word range)',
+      'M3 eligibility: scenario preconditions (lives 3, shieldMax 3, low/high word range, all five Hexes)',
       result.scenarioState.fresh.range[1] < 7 &&
       result.scenarioState['high-pressure'].range[1] >= 7 &&
       result.scenarioState.lives3.lives === 3 &&
-      result.scenarioState.shield3.shieldMax >= 3,
+      result.scenarioState.shield3.shieldMax >= 3 &&
+      Object.values(result.scenarioState['all-hexes'].held).filter((t) => t >= 1).length === 5,
       {
         freshRange: result.scenarioState.fresh.range,
         highRange: result.scenarioState['high-pressure'].range,
         lives3: result.scenarioState.lives3.lives,
         shield3: result.scenarioState.shield3.shieldMax,
+        allHexesHeld: result.scenarioState['all-hexes'].held,
       },
-      'fresh range max<7, high range max>=7, lives3=3, shield3>=3'
+      'fresh range max<7, high range max>=7, lives3=3, shield3>=3, all five hexes held'
     );
     const covered = Object.values(EXPECTED_CARDS).filter((c) => (result.offeredCount[c.id] || 0) > 0).length;
     check(
-      'M3 eligibility: all 12 cards can be offered (draft pool coverage)',
-      covered === 12,
+      'M3 eligibility: all 13 cards can be offered (draft pool coverage)',
+      covered === 13,
       { covered, offeredCount: result.offeredCount },
-      '12/12 cards observed'
+      '13/13 cards observed'
     );
     notes.eligibility = {
       drafts: result.drafts,
@@ -1143,7 +1242,671 @@ try {
       lives: visual.lives,
       shields: visual.shields,
     };
-    check('M4: HUD-with-cards state renders (12 cards held)', Object.keys(visual.deck).length === 12 && visual.phase === 'playing', { deck: visual.deck, phase: visual.phase }, '12 held cards, phase playing');
+    check('M4: HUD-with-cards state renders (13 cards held)', Object.keys(visual.deck).length === 13 && visual.phase === 'playing', { deck: visual.deck, phase: visual.phase }, '13 held cards, phase playing');
+  });
+
+  // ═══ M6: pause ═════════════════════════════════════════════════════════
+  await section('M6 pause', async () => {
+    const hooks = await wf(() => ({
+      pause: typeof window.__wordfall.pause,
+      resume: typeof window.__wordfall.resume,
+    }));
+    check('M6 pause: pause()/resume() debug hooks exist', hooks.pause === 'function' && hooks.resume === 'function', hooks, 'both functions');
+
+    await wf(() => window.__wordfall.reset(31337));
+    await page.waitForFunction(() => window.__wordfall.state.words.length >= 2, null, { timeout: 15000 });
+    await sleep(150);
+    // Snapshot AND pause atomically: a rAF frame can run between two
+    // page.evaluate round-trips, so a separate "before" evaluate would be stale
+    // by the time pause() lands (it once differed by exactly one frame).
+    const before = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const snap = { phase: s.phase, seed: s.seed, runSec: s.runSec, ys: s.words.map((x) => x.y), stats: w.stats() };
+      w.pause();
+      return snap;
+    });
+    await sleep(150);
+
+    const paused = await domInfo();
+    check('M6 pause: pause() sets phase paused', paused.phase === 'paused', paused.phase, "'paused'");
+    check('M6 pause: the pause dialog is visible', paused.dlgPause.exists && paused.dlgPause.show, paused.dlgPause, '#dlgPause.show');
+    check(
+      'M6 pause: status bar and title say Paused',
+      paused.statusMain === 'Paused' && String(paused.titleText || '').includes('Paused') && String(paused.taskText || '').includes('Paused'),
+      { statusMain: paused.statusMain, titleText: paused.titleText, taskText: paused.taskText },
+      'status "Paused", title and taskbar include "Paused"'
+    );
+    check(
+      'M6 pause: the seed line shows the seed and played time',
+      new RegExp(`^Seed ${before.seed} \\u00b7 \\d\\d:\\d\\d played$`).test(String(paused.pauseSeedLine || '')),
+      paused.pauseSeedLine,
+      `Seed ${before.seed} · MM:SS played`
+    );
+    check(
+      'M6 pause: the dialog offers Resume (default), Restart Run and Controls',
+      paused.pauseButtons.every((b) => b.exists) &&
+      /resume/i.test(paused.pauseButtons[0].text) && paused.pauseButtons[0].isDefault &&
+      /restart/i.test(paused.pauseButtons[1].text) && /controls/i.test(paused.pauseButtons[2].text) &&
+      paused.pauseNote !== null && /frozen|will not fall|nothing falls/i.test(paused.pauseNote),
+      { buttons: paused.pauseButtons, note: paused.pauseNote },
+      '#pauseResume default, #pauseRestart, #pauseControls, .pause-note mentions frozen'
+    );
+    check(
+      'M6 pause: the game menu offers Resume while paused',
+      paused.menuPause && !paused.menuPause.disabled && /^Resume/.test(paused.menuPause.label) && paused.menuPause.shortcut === 'Esc',
+      paused.menuPause,
+      'enabled, label Resume, shortcut Esc'
+    );
+
+    // Frozen board + run clock.
+    await sleep(320);
+    const frozen = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      return { phase: s.phase, ys: s.words.map((x) => x.y), runSec: s.runSec };
+    });
+    check(
+      'M6 pause: the board stays frozen while paused',
+      frozen.phase === 'paused' && JSON.stringify(frozen.ys) === JSON.stringify(before.ys),
+      { before: before.ys, after: frozen.ys },
+      'word y positions unchanged after ~300 ms'
+    );
+    check(
+      'M6 pause: runSec does not advance while paused',
+      frozen.runSec === before.runSec,
+      { before: before.runSec, after: frozen.runSec },
+      'runSec unchanged'
+    );
+    await page.screenshot({ path: shot('08-pause.png') });
+
+    // Backdrop click must not close the pause dialog.
+    await wf(() => document.getElementById('modalBackdrop').click());
+    await sleep(100);
+    const backdrop = await domInfo();
+    check(
+      'M6 pause: clicking the backdrop does not close the pause dialog',
+      backdrop.phase === 'paused' && backdrop.dlgPause.show && backdrop.modalOpen,
+      { phase: backdrop.phase, pauseShown: backdrop.dlgPause.show },
+      'still paused with #dlgPause shown'
+    );
+
+    // Controls opened from the pause dialog return to it when closed.
+    await wf(() => document.getElementById('pauseControls').click());
+    await sleep(120);
+    const controls = await domInfo();
+    check(
+      'M6 pause: Controls from the pause dialog opens the Controls dialog',
+      controls.dlgControls.show && !controls.dlgPause.show && controls.phase === 'paused',
+      { controls: controls.dlgControls.show, pause: controls.dlgPause.show, phase: controls.phase },
+      'controls shown, pause hidden, phase still paused'
+    );
+    await wf(() => document.getElementById('controlsOk').click());
+    await sleep(120);
+    const back = await domInfo();
+    check(
+      'M6 pause: closing Controls returns to the pause dialog',
+      back.phase === 'paused' && back.dlgPause.show && !back.dlgControls.show,
+      { phase: back.phase, pause: back.dlgPause.show, controls: back.dlgControls.show },
+      'paused with #dlgPause shown again'
+    );
+
+    // resume() hook.
+    await wf(() => window.__wordfall.resume());
+    await sleep(150);
+    const resumed = await domInfo();
+    check(
+      'M6 pause: resume() returns to playing and hides the dialog',
+      resumed.phase === 'playing' && !resumed.dlgPause.show && !resumed.modalOpen && /^Playing/.test(String(resumed.statusMain || '')),
+      { phase: resumed.phase, pauseShown: resumed.dlgPause.show, statusMain: resumed.statusMain },
+      "phase 'playing', dialog hidden"
+    );
+
+    // Typing regression: 'p' is a normal letter, never a pause key.
+    await wf(() => {
+      const w = window.__wordfall;
+      w.reset(9090);
+      w.state.words.length = 0;
+      w.spawnWord('map', { y: 240 });
+    });
+    await sleep(80);
+    for (const ch of ['m', 'a', 'p']) await page.keyboard.press(ch);
+    await sleep(120);
+    const typedP = await wf(() => ({
+      phase: window.__wordfall.state.phase,
+      cleared: window.__wordfall.state.cleared,
+      keys: window.__wordfall.state.keys,
+      words: window.__wordfall.state.words.map((x) => x.text),
+    }));
+    check(
+      'M6 pause: the letter P types normally and does not pause',
+      typedP.phase === 'playing' && typedP.cleared === 1 && typedP.keys === 3 && typedP.words.indexOf('map') < 0,
+      typedP,
+      "phase 'playing', 'map' cleared, 3 keys typed"
+    );
+
+    // Keyboard: Escape pauses, Escape resumes.
+    await wf(() => window.__wordfall.reset(9091));
+    await page.waitForFunction(() => window.__wordfall.state.words.length >= 1, null, { timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    const escPaused = await domInfo();
+    check('M6 pause: the Escape key pauses', escPaused.phase === 'paused' && escPaused.dlgPause.show, { phase: escPaused.phase, dialog: escPaused.dlgPause.show }, "'paused'");
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    const escResumed = await domInfo();
+    check('M6 pause: Escape resumes while paused', escResumed.phase === 'playing' && !escResumed.dlgPause.show, { phase: escResumed.phase }, "'playing'");
+
+    // Keyboard: Enter resumes while paused; other letters do not.
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    await page.keyboard.press('p');
+    await sleep(120);
+    const pWhilePaused = await domInfo();
+    check(
+      'M6 pause: P no longer resumes while paused',
+      pWhilePaused.phase === 'paused' && pWhilePaused.dlgPause.show,
+      { phase: pWhilePaused.phase, dialog: pWhilePaused.dlgPause.show },
+      'still paused after P'
+    );
+    await page.keyboard.press('Enter');
+    await sleep(150);
+    const enterResumed = await domInfo();
+    check('M6 pause: Enter resumes while paused', enterResumed.phase === 'playing' && !enterResumed.dlgPause.show, { phase: enterResumed.phase }, "'playing'");
+
+    // Escape closes an open menu instead of pausing the run.
+    await wf(() => window.__wordfall.reset(9092));
+    await page.waitForFunction(() => window.__wordfall.state.words.length >= 1, null, { timeout: 15000 });
+    await page.keyboard.press('Alt+g');
+    await sleep(120);
+    const menuOpen = await wf(() => ({ open: !!document.querySelector('.menu-item.open'), phase: window.__wordfall.state.phase }));
+    await page.keyboard.press('Escape');
+    await sleep(150);
+    const menuClosed = await wf(() => ({ open: !!document.querySelector('.menu-item.open'), phase: window.__wordfall.state.phase, dialog: document.getElementById('dlgPause').classList.contains('show') }));
+    check(
+      'M6 pause: Escape closes an open menu instead of pausing',
+      menuOpen.open && menuOpen.phase === 'playing' && !menuClosed.open && menuClosed.phase === 'playing' && !menuClosed.dialog,
+      { opened: menuOpen, afterEscape: menuClosed },
+      'menu open -> closed, phase stays playing'
+    );
+    await wf(() => window.__wordfall.resume()); // no-op when already playing
+    await sleep(80);
+
+    // The menu item is disabled outside playing/paused.
+    await wf(() => {
+      const w = window.__wordfall;
+      w.reset(6161);
+      w.beginDraft();
+    });
+    await page.waitForFunction(
+      () => {
+        const item = document.getElementById('menuPause');
+        return window.__wordfall.state.phase === 'draft' && item && item.classList.contains('disabled');
+      },
+      null,
+      { timeout: 10000 }
+    );
+    const drafting = await domInfo();
+    check(
+      'M6 pause: the Game menu Pause item is disabled during the draft',
+      drafting.phase === 'draft' && drafting.menuPause && drafting.menuPause.disabled && /^Pause/.test(drafting.menuPause.label),
+      drafting.menuPause,
+      'disabled while drafting'
+    );
+    await wf(() => window.__wordfall.skip());
+    await sleep(100);
+  });
+
+  // ═══ M6: lifetime records ══════════════════════════════════════════════
+  await section('M6 records', async () => {
+    const hooks = await wf(() => ({
+      records: window.__wordfall.records && typeof window.__wordfall.records === 'object',
+      fields: window.__wordfall.records ? Object.keys(window.__wordfall.records).sort() : null,
+    }));
+    check(
+      'M6 records: the records hook exposes the contract fields',
+      hooks.records && JSON.stringify(hooks.fields) === JSON.stringify(['bestCombo', 'bestScore', 'bestWave', 'dawns', 'fastestDawnSec', 'runs', 'words']),
+      hooks,
+      '7 fields on window.__wordfall.records'
+    );
+
+    // Seed a known baseline, then reload to prove load-at-boot.
+    await wf(() => {
+      const baseline = { runs: 4, dawns: 1, bestScore: 100, bestWave: 3, bestCombo: 7, words: 42, fastestDawnSec: 77 };
+      localStorage.setItem('wordfall.records', JSON.stringify(baseline));
+      localStorage.setItem('wordfall.best', '100');
+    });
+    await reloadGame();
+    const loaded = await wf(() => {
+      const w = window.__wordfall;
+      return {
+        phase: w.state.phase,
+        records: Object.assign({}, w.records),
+        best: w.state.best,
+        stored: JSON.parse(localStorage.getItem('wordfall.records') || 'null'),
+        welcomeBest: String((document.getElementById('welcomeBest') || {}).textContent || '').trim(),
+        menuRecords: !!document.getElementById('menuRecords'),
+      };
+    });
+    check(
+      'M6 records: lifetime records load from localStorage at boot',
+      loaded.phase === 'menu' &&
+      loaded.records.runs === 4 && loaded.records.dawns === 1 && loaded.records.bestScore === 100 &&
+      loaded.records.bestWave === 3 && loaded.records.bestCombo === 7 && loaded.records.words === 42 &&
+      loaded.records.fastestDawnSec === 77 && loaded.best === 100,
+      loaded.records,
+      'baseline loaded, state.best 100'
+    );
+    check(
+      'M6 records: the welcome dialog shows the record best score',
+      loaded.welcomeBest === 'Best score: 100' && loaded.menuRecords,
+      { welcomeBest: loaded.welcomeBest, menuRecords: loaded.menuRecords },
+      '"Best score: 100", #menuRecords exists'
+    );
+
+    // Force a run end and check the records update exactly once.
+    const forced = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(424242);
+      s.score = 250;
+      s.bestCombo = 9;
+      s.wave = 4;
+      s.cleared = 50;
+      s.words.length = 0;
+      w.spawnWord('cat', { y: s.groundY - 10 });
+      return { before: Object.assign({}, w.records), seed: s.seed };
+    });
+    await page.waitForFunction(() => window.__wordfall.state.phase === 'gameover', null, { timeout: 10000 });
+    const ended = await wf(() => {
+      const w = window.__wordfall;
+      return {
+        phase: w.state.phase,
+        records: Object.assign({}, w.records),
+        stored: JSON.parse(localStorage.getItem('wordfall.records') || 'null'),
+        best: w.state.best,
+        legacyBest: Number(localStorage.getItem('wordfall.best') || 0),
+      };
+    });
+    check('M6 records: the forced run ended in game over', ended.phase === 'gameover', ended.phase, "'gameover'");
+    check(
+      'M6 records: a finished run increments runs and updates the best fields',
+      ended.records.runs === forced.before.runs + 1 &&
+      ended.records.bestScore === 250 && ended.records.bestWave === 4 && ended.records.bestCombo === 9 &&
+      ended.records.words === forced.before.words + 50 && ended.records.dawns === 1 && ended.records.fastestDawnSec === 77,
+      { before: forced.before, after: ended.records },
+      'runs +1, bestScore 250, bestWave 4, bestCombo 9, words +50, dawns/fastest unchanged'
+    );
+    check(
+      'M6 records: the run is saved to localStorage once and best mirrors it',
+      JSON.stringify(ended.stored) === JSON.stringify(ended.records) && ended.best === 250 && ended.legacyBest === 250,
+      { stored: ended.stored, records: ended.records, best: ended.best, legacyBest: ended.legacyBest },
+      'wordfall.records persisted, wordfall.best 250'
+    );
+
+    // The Records dialog renders the saved values.
+    await wf(() => document.getElementById('menuRecords').click());
+    await sleep(150);
+    const recDom = await domInfo();
+    check(
+      'M6 records: the Records dialog is visible with the saved values',
+      recDom.dlgRecords.exists && recDom.dlgRecords.show &&
+      recDom.records.bestScore === '250' && recDom.records.bestWave === '4' && recDom.records.bestCombo === '9' &&
+      recDom.records.runs === '5' && recDom.records.dawns === '1' && recDom.records.words === '92' &&
+      recDom.records.fastest === '01:17',
+      { dialog: recDom.dlgRecords.show, values: recDom.records },
+      '#dlgRecords shown; 250 / 4 / 9 / 5 / 1 / 92 / 01:17'
+    );
+    await page.screenshot({ path: shot('09-records.png') });
+    await wf(() => document.getElementById('recordsOk').click());
+    await sleep(120);
+    const recClosed = await domInfo();
+    check(
+      'M6 records: the Records OK button closes the dialog',
+      !recClosed.dlgRecords.show,
+      { shown: recClosed.dlgRecords.show, modalOpen: recClosed.modalOpen },
+      'dialog closed'
+    );
+    notes.records = { forcedSeed: forced.seed, before: forced.before, after: ended.records };
+  });
+
+  // ═══ M6: run stats + seed ══════════════════════════════════════════════
+  await section('M6 run stats + seed', async () => {
+    const det = await wf(() => {
+      const w = window.__wordfall;
+      const sample = (seed) => {
+        w.reset(seed);
+        const s = w.state;
+        const seq = [];
+        for (let i = 0; i < 10; i++) {
+          s.words.length = 0;                      // avoid maxWords while sampling
+          const word = w.spawnOne();
+          seq.push(word ? `${word.text}@${word.x.toFixed(3)}` : 'null');
+        }
+        return { seed: s.seed, seq };
+      };
+      const a = sample(123456789);
+      const b = sample(123456789);
+      const c = sample(987654321);
+      return { a, b, c };
+    });
+    check(
+      'M6 seed: reset(seed) seeds the PRNG deterministically and stores state.seed',
+      det.a.seed === 123456789 && det.b.seed === 123456789 && det.c.seed === 987654321,
+      { a: det.a.seed, b: det.b.seed, c: det.c.seed },
+      'state.seed equals the requested seed'
+    );
+    check(
+      'M6 seed: the same seed produces the same spawn sequence',
+      JSON.stringify(det.a.seq) === JSON.stringify(det.b.seq) && det.a.seq.every((s) => s !== 'null'),
+      { a: det.a.seq, b: det.b.seq },
+      'identical texts and x positions'
+    );
+    check(
+      'M6 seed: a different seed produces a different spawn sequence',
+      JSON.stringify(det.a.seq) !== JSON.stringify(det.c.seq),
+      { a: det.a.seq.slice(0, 4), c: det.c.seq.slice(0, 4) },
+      'sequences differ'
+    );
+
+    const stats = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(2468);
+      s.words.length = 0;
+      const word = w.spawnWord('cat', { y: 240 });
+      w.typeLetter('c');                          // correct
+      w.typeLetter('z');                          // wrong key
+      const stats = w.stats();
+      return { stats, keys: s.keys, mistakes: s.mistakes, runSec: s.runSec, seed: s.seed, progress: word.progress };
+    });
+    check(
+      'M6 stats: stats() returns the contract shape',
+      ['keys', 'mistakes', 'runSec', 'wpm', 'accuracy'].every((k) => stats.stats && typeof stats.stats[k] === 'number'),
+      stats.stats,
+      '{keys, mistakes, runSec, wpm, accuracy} all numbers'
+    );
+    check(
+      'M6 stats: correct and wrong keys are counted',
+      stats.keys === 1 && stats.mistakes === 1 && stats.stats.keys === 1 && stats.stats.mistakes === 1 &&
+      stats.stats.accuracy === 50 && stats.stats.runSec === stats.runSec && stats.progress === 1,
+      { keys: stats.keys, mistakes: stats.mistakes, stats: stats.stats, progress: stats.progress },
+      'keys 1, mistakes 1, accuracy 50'
+    );
+
+    // Force a game over and check the stats line + Retry Seed button.
+    await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(777);
+      s.words.length = 0;
+      w.spawnWord('cat', { y: 200 });
+      w.typeLetter('c');
+      w.typeLetter('a');
+      w.typeLetter('t');
+      s.words.length = 0;
+      w.spawnWord('dog', { y: s.groundY - 10 });
+    });
+    await page.waitForFunction(() => window.__wordfall.state.phase === 'gameover', null, { timeout: 10000 });
+    const over = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      return {
+        phase: s.phase,
+        seed: s.seed,
+        stats: w.stats(),
+        keys: s.keys,
+        text: String((document.getElementById('overStats') || {}).textContent || ''),
+        overSeed: !!document.getElementById('overSeed'),
+        overSeedText: String((document.getElementById('overSeed') || {}).textContent || '').trim(),
+      };
+    });
+    check('M6 stats: the forced run ends in game over', over.phase === 'gameover', over.phase, "'gameover'");
+    check(
+      'M6 stats: the game-over stats line carries WPM, accuracy, run time and seed',
+      /\d+ WPM \u00b7 \d+% accuracy \u00b7 \d\d:\d\d \u00b7 Seed \d+/.test(over.text) &&
+      over.text.includes(`Seed ${over.seed}`) &&
+      /\d+ (?:word|words) cleared/.test(over.text) && over.text.includes('best combo'),
+      over.text,
+      'Wave N · N word(s) cleared · best combo N · WPM · accuracy % · MM:SS · Seed N'
+    );
+    check(
+      'M6 stats: the game-over retry button is labelled Retry Seed',
+      over.overSeed && /retry seed/i.test(over.overSeedText),
+      { exists: over.overSeed, text: over.overSeedText },
+      '#overSeed exists, "Retry Seed"'
+    );
+
+    // Retry Seed restores the seed.
+    await wf(() => document.getElementById('overSeed').click());
+    await sleep(200);
+    const retried = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      return { phase: s.phase, seed: s.seed, score: s.score, keys: s.keys, mistakes: s.mistakes, runRecorded: s.runRecorded };
+    });
+    check(
+      'M6 seed: Retry Seed starts a new run with the same seed',
+      retried.phase === 'playing' && retried.seed === over.seed && retried.score === 0 && retried.keys === 0 && retried.mistakes === 0,
+      { before: over.seed, after: retried.seed, phase: retried.phase, score: retried.score },
+      'phase playing, same seed, counters reset'
+    );
+    notes.seed = { seed: over.seed, retried: retried.seed, stats: over.stats, text: over.text };
+  });
+
+  // ═══ M6: Split card ═════════════════════════════════════════════════════
+  await section('M6 Split', async () => {
+    const seqs = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const run = (tier) => {
+        w.reset(9001);
+        w.grant('split', tier);
+        const rows = [];
+        for (let i = 0; i < 9; i++) {
+          s.words.length = 0;
+          w.spawnOne();
+          rows.push(s.words.length);
+        }
+        return rows;
+      };
+      return { tier1: run(1), tier2: run(2) };
+    });
+    check(
+      'M6 Split: tier I adds a free word on every 5th spawn',
+      JSON.stringify(seqs.tier1) === JSON.stringify([1, 1, 1, 1, 2, 1, 1, 1, 1]),
+      seqs.tier1,
+      '[1,1,1,1,2,1,1,1,1]'
+    );
+    check(
+      'M6 Split: tier II adds a free word on every 3rd spawn',
+      JSON.stringify(seqs.tier2) === JSON.stringify([1, 1, 2, 1, 1, 2, 1, 1, 2]),
+      seqs.tier2,
+      '[1,1,2,1,1,2,1,1,2]'
+    );
+
+    // The free word is real, short and harmless.
+    const extras = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const sample = (tier, every, seed) => {
+        w.reset(seed);
+        w.grant('split', tier);
+        const rows = [];
+        for (let i = 0; i < 30; i++) {
+          s.words.length = 0;
+          const primary = w.spawnOne();
+          if (!primary) continue;
+          const extra = s.words.filter((x) => x !== primary)[0] || null;
+          if ((i + 1) % every === 0) {
+            rows.push({
+              spawn: i + 1,
+              has: !!extra,
+              text: extra ? extra.text : null,
+              len: extra ? extra.text.length : null,
+              harmless: extra ? extra.harmless === true : null,
+              fake: extra ? !!extra.fake : null,
+            });
+          }
+        }
+        return rows;
+      };
+      return { tier1: sample(1, 5, 9002), tier2: sample(2, 3, 9003) };
+    });
+    const allExtras = extras.tier1.concat(extras.tier2);
+    check(
+      'M6 Split: the free word is a real, short word flagged harmless',
+      allExtras.length === 16 && allExtras.every((r) => r.has && r.harmless === true && r.fake === false && r.len >= 3 && r.len <= 5),
+      { tier1: extras.tier1.slice(0, 3), tier2: extras.tier2.slice(0, 3), count: allExtras.length },
+      'every 5th/3rd spawn adds a harmless 3-5 letter word, never fake'
+    );
+
+    // The free word is fully typeable and scores like a normal clear.
+    const typeable = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(9004);
+      s.words.length = 0;
+      const word = w.spawnWord('sun', { y: 240 });
+      word.harmless = true;
+      const before = { cleared: s.cleared, score: s.score, mistakes: s.mistakes, keys: s.keys };
+      let guard = 0;
+      while (guard++ < 12 && s.words.indexOf(word) >= 0) {
+        const ch = w.nextChar(word);
+        if (ch == null) break;
+        w.typeLetter(ch);
+      }
+      return { before, cleared: s.cleared, score: s.score, mistakes: s.mistakes, keys: s.keys, gone: s.words.indexOf(word) < 0, phase: s.phase };
+    });
+    check(
+      'M6 Split: the free word is typeable and scores',
+      typeable.gone && typeable.cleared === typeable.before.cleared + 1 &&
+      typeable.score > typeable.before.score && typeable.mistakes === typeable.before.mistakes &&
+      typeable.keys === typeable.before.keys + 3,
+      typeable,
+      'cleared +1, score rises, no mistake, 3 correct keys'
+    );
+
+    // Reaching the danger line costs no life.
+    const ground = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(9005);
+      w.grant('split', 1);
+      s.words.length = 0;
+      const word = w.spawnWord('sun', { y: s.groundY - 5 });
+      word.harmless = true;
+      return { lives: s.lives, id: word.id, phase: s.phase };
+    });
+    await page.waitForFunction(
+      (id) => {
+        const s = window.__wordfall.state;
+        return s.phase === 'playing' && !s.words.some((x) => x.id === id);
+      },
+      ground.id,
+      { timeout: 10000 }
+    );
+    const groundAfter = await wf((id) => {
+      const w = window.__wordfall;
+      const s = w.state;
+      return { phase: s.phase, lives: s.lives, ids: s.words.map((x) => x.id), cleared: s.cleared, has: s.words.some((x) => x.id === id) };
+    }, ground.id);
+    check(
+      'M6 Split: a harmless word reaching the danger line costs no life',
+      groundAfter.phase === 'playing' && groundAfter.lives === ground.lives && !groundAfter.has,
+      { setup: ground, after: groundAfter },
+      'phase playing, lives unchanged, word removed'
+    );
+
+    // The free word breaks the spawn queue: it lands above maxWords.
+    const cap = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(9006);
+      w.grant('split', 1);
+      for (let i = 0; i < 4; i++) {          // prime the spawn counter to the 5th
+        s.words.length = 0;
+        w.spawnOne();
+      }
+      s.words.length = 0;
+      const maxWords = w.CFG.maxWords;
+      while (s.words.length < maxWords - 1) w.spawnWord('cat', { y: 0 });   // spawnWord does not count
+      const beforeIds = s.words.map((x) => x.id);
+      const beforeYs = s.words.map((x) => x.y);
+      const primary = w.spawnOne();
+      const added = s.words.filter((x) => beforeIds.indexOf(x.id) < 0);
+      return {
+        maxWords,
+        beforeCount: beforeIds.length,
+        afterCount: s.words.length,
+        primaryId: primary ? primary.id : null,
+        added: added.map((x) => ({ id: x.id, text: x.text, fake: !!x.fake, harmful: x.harmless === true, y: x.y })),
+        beforeYs,
+      };
+    });
+    const extra = cap.added.filter((x) => x.id !== cap.primaryId)[0] || null;
+    check(
+      'M6 Split: the free word bypasses maxWords',
+      cap.beforeCount === cap.maxWords - 1 && cap.afterCount === cap.maxWords + 1 && cap.added.length === 2,
+      { maxWords: cap.maxWords, beforeCount: cap.beforeCount, afterCount: cap.afterCount, added: cap.added },
+      `queue ${cap.maxWords - 1} -> ${cap.maxWords + 1} words`
+    );
+    check(
+      'M6 Split: the queue-breaking word is the harmless word above the queue',
+      !!extra && extra.harmful === true && extra.fake === false && extra.y < Math.min(...cap.beforeYs),
+      { extra, beforeYs: cap.beforeYs },
+      'harmless word, y above the existing queue'
+    );
+
+    // Never a fake, even when Decoy is turning primaries into fakes.
+    const fakeCheck = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      w.reset(9007);
+      w.grant('split', 1);
+      w.grant('decoy', 2);
+      let splitSpawns = 0;
+      let fakeExtras = 0;
+      let harmlessExtras = 0;
+      let primaryFakes = 0;
+      for (let i = 0; i < 60; i++) {
+        s.words.length = 0;
+        const primary = w.spawnOne();
+        if (!primary) continue;
+        if (primary.fake) primaryFakes += 1;
+        const extraWords = s.words.filter((x) => x !== primary);
+        if (extraWords.length) {
+          splitSpawns += 1;
+          fakeExtras += extraWords.filter((x) => x.fake).length;
+          harmlessExtras += extraWords.filter((x) => x.harmless === true).length;
+        }
+      }
+      return { splitSpawns, fakeExtras, harmlessExtras, primaryFakes };
+    });
+    check(
+      'M6 Split: the free word is never a fake',
+      fakeCheck.splitSpawns === 12 && fakeCheck.harmlessExtras === 12 && fakeCheck.fakeExtras === 0 && fakeCheck.primaryFakes > 0,
+      fakeCheck,
+      '12/60 split spawns, 12 harmless extras, 0 fakes, primaries include fakes'
+    );
+
+    // Grant path + tier bookkeeping.
+    const tiers = await wf(() => {
+      const w = window.__wordfall;
+      w.reset(9008);
+      const t1 = w.heldTier('split');
+      w.grant('split', 1);
+      const first = w.heldTier('split');
+      w.grant('split', 2);
+      return { before: t1, first, second: w.heldTier('split'), maxTier: w.CARDS.find((c) => c.id === 'split').maxTier };
+    });
+    check(
+      'M6 Split: grant() walks tiers I -> II',
+      tiers.before === 0 && tiers.first === 1 && tiers.second === 2 && tiers.maxTier === 2,
+      tiers,
+      '0 -> 1 -> 2, maxTier 2'
+    );
+    notes.split = { seqs, extras: allExtras, typeable, ground: { setup: ground, after: groundAfter }, fakeCheck, cap: { maxWords: cap.maxWords, beforeCount: cap.beforeCount, afterCount: cap.afterCount, extra } };
   });
 
   // ═══ Console/page errors are failures ═════════════════════════════════
@@ -1157,7 +1920,7 @@ try {
 const passed = checks.filter((c) => c.pass).length;
 summary = {
   pass: checks.every((c) => c.pass),
-  version: 'M5',
+  version: 'M6',
   checks,
   failed: checks.filter((c) => !c.pass).map((c) => c.name),
   consoleErrors: errors,

@@ -578,8 +578,59 @@ u { text-underline-offset: 1px; }
   color: #404040;
 }
 
+/* Pause */
+.dlg-pause { width: 400px; }
+
+.pause-body {
+  padding: 12px 14px 4px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.pause-seed {
+  padding: 3px 6px;
+  margin: 0 0 9px;
+  background: var(--face);
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pause-note {
+  margin: 0;
+  color: var(--ink);
+}
+
+/* Records */
+.dlg-records { width: 340px; }
+
+.records-table {
+  width: 100%;
+  margin: 0 0 6px;
+  border-collapse: collapse;
+  background: var(--white);
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+}
+
+.records-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--face);
+  vertical-align: baseline;
+}
+
+.records-table tr:last-child td { border-bottom: none; }
+
+.records-table .rec-val {
+  padding-left: 24px;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Message dialogs */
-.dlg-message { width: 360px; }
+.dlg-message { width: 400px; }
 
 .big-score {
   font-size: 28px;
@@ -590,7 +641,13 @@ u { text-underline-offset: 1px; }
 
 .dawn-score { color: #806000; }
 
-.stats { font-size: 11px; color: #000; margin-bottom: 4px; }
+.stats {
+  font-size: 11px;
+  color: #000;
+  margin-bottom: 4px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
 
 .held-line {
   margin-top: 4px;
@@ -779,6 +836,19 @@ u { text-underline-offset: 1px; }
 .app.modal-open .menu-label {
   color: var(--disabled);
 }
+
+/* Title-bar buttons are part of the inert frame while a dialog is up. */
+.app.modal-open .title-buttons { pointer-events: none; }
+
+.app.modal-open .title-btn { cursor: default; }
+
+.app.modal-open .title-btn.min i,
+.app.modal-open .title-btn.close i::before,
+.app.modal-open .title-btn.close i::after {
+  background: var(--disabled);
+}
+
+.app.modal-open .title-btn.max i { border-color: var(--disabled); }
 
 /* ── Native (WebView2) embedded mode ────────────────────────────────────── */
 body.embedded { background: #000; }
