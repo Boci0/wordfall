@@ -10,7 +10,7 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 [![Latest release](https://img.shields.io/github/v/release/Boci0/wordfall?style=flat-square&label=release&color=008080)](https://github.com/Boci0/wordfall/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Boci0/wordfall/total?style=flat-square&color=008080)](https://github.com/Boci0/wordfall/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%2B%20browser-0078D6?style=flat-square&logo=windows&logoColor=white)](#download)
-[![Built with](https://img.shields.io/badge/built%20with-JavaScript%20%2B%20WinForms-F7DF1E?style=flat-square&logo=javascript&logoColor=black)](#build-from-source)
+[![Built with](https://img.shields.io/badge/built%20with-.NET%20%2B%20JavaScript-512BD4?style=flat-square&logo=dotnet&logoColor=white)](#build-from-source)
 
 <br>
 
@@ -113,7 +113,7 @@ Grab the latest build below, or browse every file on the [releases page](https:/
 
 | Platform | Get it | Notes |
 | :--- | :--- | :--- |
-| **Windows 10 / 11** | [**Wordfall for Windows**](https://github.com/Boci0/wordfall/releases/latest) | The native app: a real borderless window and in-app updates. Download the win64 zip, extract it, run `Wordfall.exe`. |
+| **Windows 10/11** | [**Wordfall for Windows**](https://github.com/Boci0/wordfall/releases/latest) | The native app: a real borderless window and in-app updates. Download the win64 zip, extract it, run `Wordfall.exe`. |
 | **Any browser** | [**Play Wordfall**](https://boci0.github.io/wordfall/) | Nothing to install. The complete fake desktop, menus and dialogs. |
 
 The browser build also runs straight from the repository: open `index.html`, with no server
