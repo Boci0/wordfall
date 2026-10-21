@@ -41,7 +41,8 @@ dist\Wordfall-win64\Wordfall.exe
 ```
 
 **In a browser** — shows the full fake desktop (teal wallpaper, icons, taskbar, Start menu)
-with the application window in the middle. No build step, no server, no dependencies:
+with the application window in the middle. No build step, no server, no dependencies.
+Play the current build at **<https://boci0.github.io/wordfall/>**, or open the file locally:
 
 ```
 start index.html
