@@ -10,6 +10,7 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 [![Latest release](https://img.shields.io/github/v/release/Boci0/wordfall?style=flat-square&label=release&color=008080)](https://github.com/Boci0/wordfall/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Boci0/wordfall/total?style=flat-square&color=008080)](https://github.com/Boci0/wordfall/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%2B%20browser-0078D6?style=flat-square&logo=windows&logoColor=white)](#download)
+[![License](https://img.shields.io/badge/license-MIT-008080?style=flat-square)](LICENSE)
 [![Built with](https://img.shields.io/badge/built%20with-.NET%20%2B%20JavaScript-512BD4?style=flat-square&logo=dotnet&logoColor=white)](#build-from-source)
 
 <br>
@@ -259,5 +260,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.4.1 &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.4.1 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>
