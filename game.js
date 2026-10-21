@@ -76,9 +76,21 @@
     fxMaxShards: 140,
     fxMaxRings: 18,
     fxMaxPopups: 22,
+    fxMaxStreaks: 150,
+    // Word motion trails: one history sample every `trailEvery` seconds, up to
+    // `trailLen` samples. The samples are visual-only (never read by a rule).
+    trailEvery: 0.045,
+    trailLen: 10,
     // Fakes "fall through" rather than settling in the queue: they drop faster
     // so a Decoy blocks the target for seconds, not for a whole fall.
     fakeSpeedMult: 4.5,
+    // Flares: an occasional short word that races down the board. It scores
+    // like any other word, but if it reaches the line it slips through
+    // harmlessly instead of costing a Life. Purely for liveliness; the gap is
+    // a time range in seconds.
+    flareMinGap: 13,
+    flareMaxGap: 25,
+    flareSpeedMult: 2.5,
   };
 
   // Relay 12: one story beat after each cleared wave. These are flavor only  - 
@@ -98,7 +110,9 @@
   ];
   const ENDLESS_LOG = 'The channel is still open.';
 
-  // 16-colour-era palette: no gradients, no glow, no alpha except fades.
+  // Win95 palette for chrome, plus a few "signal" accents the playfield uses.
+  // The backdrop is full colour now; the word colours stay high-contrast so the
+  // rules remain readable on top of the warp.
   const COL = {
     skyDark: '#000020',
     skyLight: '#000060',
@@ -109,24 +123,54 @@
     buildingEdge: '#101010',
     windowWarm: '#c0c000',
     windowCool: '#00a0a0',
-    danger: '#ff0000',
-    wordIdle: '#808080',
-    wordSet: '#c0c0c0',
+    danger: '#ff0033',
+    wordIdle: '#b9b3cc',
+    wordSet: '#eeeeff',
     target: '#ffff00',
-    typed: '#00a000',
-    fake: '#c000c0',
-    splitWord: '#00a0a0',
-    hidden: '#606060',
-    echo: 'rgba(128, 128, 128, 0.30)',
+    typed: '#39ff14',
+    fake: '#ff2bd1',
+    splitWord: '#25f4ff',
+    flare: '#8dfff2',
+    hidden: '#6a6070',
+    echo: 'rgba(200, 200, 255, 0.26)',
     accent: '#ffff00',
     white: '#ffffff',
     gold: '#ffff00',
-    amber: '#c0c000',
-    scan: '#00a0a0',
+    amber: '#ffe066',
+    scan: '#00f0ff',
   };
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+  // ─── Psychedelic palette ──────────────────────────────────────────────────
+  // The Win95 chrome stays 16-colour; the playfield has been taken over by the
+  // signal. Everything behind the words is full colour, hue-cycled and warped.
+  // Time- and index-derived only - never the seeded gameplay RNG.
+  const MOD = (n, m) => ((n % m) + m) % m;
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  function hsl(h, s, l, a) {
+    h = MOD(h, 1);
+    s = clamp(s, 0, 1);
+    l = clamp(l, 0, 1);
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const r = Math.round(hue2rgb(p, q, h + 1 / 3) * 255);
+    const g = Math.round(hue2rgb(p, q, h) * 255);
+    const b = Math.round(hue2rgb(p, q, h - 1 / 3) * 255);
+    return a == null ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${a})`;
+  }
+  // Hue positions for sparks / shards / callouts so the whole effect layer
+  // shares the background's colour wheel instead of the old 16-colour set.
+  const NEON = (t) => hsl(t * 0.13 + 0.08, 1, 0.62);
+  const TRIPPY = ['#ff2bd1', '#25f4ff', '#b6ff1a', '#ffae00', '#8a5bff', '#ff3b3b', '#ffffff'];
 
   // ─── Word pool ────────────────────────────────────────────────────────────
   // words.js ships a 400+ word pool; this small built-in list keeps the game
@@ -194,85 +238,62 @@
   }
 
   // ─── Canvas ───────────────────────────────────────────────────────────────
+  // The playfield is drawn into a small offscreen scene and then upscaled with
+  // smoothing. That is the "blurry filter over everything": words, particles and
+  // backdrop are all rendered soft, and - the real win - the canvas only paints
+  // a fraction of the pixels, which is where most of the old lag came from.
+  // The Win95 chrome around the playfield is ordinary DOM, so it stays crisp.
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  const out = canvas.getContext('2d');
+  const scene = document.createElement('canvas');
+  const sctx = scene.getContext('2d');
+  const SCENE_SCALE = 0.55;      // lower = heavier blur + faster; raise for clarity
+  let ctx = out;                 // active context: scene while drawing, out for the blit
 
   let W = 0;
   let H = 0;
   let charW = 0;
-  let stars = [];
-  let signalField = [];
+
+  // Slow, dim colour drifting behind the words. These are a handful of huge,
+  // low-alpha discs - not warped shapes - and the low-resolution upscale turns
+  // them into soft, out-of-focus blobs.
+  const BG_BLOBS = [
+    { hue: 0.56, x: 0.24, y: 0.28, r: 0.55, l: 0.16, a: 0.55, sx: 0.07, sy: 0.05, ph: 0.0 },
+    { hue: 0.72, x: 0.74, y: 0.22, r: 0.50, l: 0.14, a: 0.50, sx: 0.05, sy: 0.09, ph: 1.7 },
+    { hue: 0.84, x: 0.58, y: 0.60, r: 0.60, l: 0.13, a: 0.60, sx: 0.09, sy: 0.06, ph: 3.1 },
+    { hue: 0.94, x: 0.20, y: 0.72, r: 0.45, l: 0.13, a: 0.50, sx: 0.04, sy: 0.08, ph: 4.4 },
+    { hue: 0.46, x: 0.82, y: 0.75, r: 0.50, l: 0.13, a: 0.45, sx: 0.08, sy: 0.05, ph: 2.2 },
+    { hue: 0.10, x: 0.45, y: 0.05, r: 0.35, l: 0.12, a: 0.35, sx: 0.06, sy: 0.07, ph: 5.3 },
+  ];
 
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const viewW = canvas.clientWidth || window.innerWidth;
     const viewH = canvas.clientHeight || window.innerHeight;
-    // The rules live in a fixed 800-unit-tall logical playfield, uniformly scaled
-    // to the window. Otherwise a shorter/longer client area would change fall
-    // times and difficulty (the old full-page canvas happened to be 800 tall).
+    // The rules live in a fixed 800-unit-tall logical playfield, uniformly
+    // scaled to the window (fall times stay identical at any window size).
     const scale = Math.max(0.5, viewH / 800);
     W = viewW / scale;
     H = 800;
-    canvas.width = Math.round(viewW * dpr);
-    canvas.height = Math.round(viewH * dpr);
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
 
+    // Output at 1:1 CSS pixels. The scene is upscaled into it anyway, so a 2x
+    // backing store would only multiply the blit cost for no visible gain.
+    canvas.width = Math.max(1, Math.round(viewW));
+    canvas.height = Math.max(1, Math.round(viewH));
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    out.imageSmoothingEnabled = true;
+    out.imageSmoothingQuality = 'low';
+
+    scene.width = Math.max(120, Math.round(viewW * SCENE_SCALE));
+    scene.height = Math.max(80, Math.round(viewH * SCENE_SCALE));
+    sctx.setTransform(scene.width / W, 0, 0, scene.height / H, 0, 0);
+
+    ctx = sctx;
     ctx.font = WORD_FONT;
     ctx.textBaseline = 'top';
     charW = ctx.measureText('M').width || 16;
+    ctx = out;
 
     state.groundY = H - CFG.groundPad;
-    stars = makeStars();
-    signalField = makeSignalField();
-  }
-
-  function makeStars() {
-    const rnd = mulberry32(1337);
-    const out = [];
-    const n = Math.round((W * H) / 14000);
-    for (let i = 0; i < n; i++) {
-      out.push({
-        x: rnd() * W,
-        y: rnd() * (H - CFG.groundPad),
-        r: rnd() < 0.85 ? 1 : 1.6,
-        a: 0.12 + rnd() * 0.5,
-        tw: rnd() * Math.PI * 2,
-      });
-    }
-    return out;
-  }
-
-  // The floor strip is an abstract signal field: irregular bars and clusters,
-  // no buildings, windows or mast. It reads as a spectrum frozen at the horizon
-  // and leaves the playfield free of literal scenery.
-  function makeSignalField() {
-    const rnd = mulberry32(4242);
-    const out = [];
-    let x = -8;
-    while (x < W + 8) {
-      const cluster = rnd() < 0.16;
-      const w = cluster ? 7 + rnd() * 16 : 1 + rnd() * 4;
-      const h = 10 + rnd() * (CFG.groundPad - 18);
-      out.push({
-        x,
-        w,
-        h,
-        tone: rnd() < 0.5 ? 0 : 1,
-        cap: rnd() < 0.18 ? (rnd() < 0.6 ? COL.windowWarm : COL.windowCool) : COL.buildingTop,
-      });
-      x += w + 2 + rnd() * 7;
-    }
-    return out;
-  }
-
-  function mulberry32(a) {
-    return function () {
-      a |= 0;
-      a = (a + 0x6d2b79f5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
   }
 
   // Seeded RNG for gameplay randomness (spawns, drafts, decoys, particles).
@@ -305,6 +326,7 @@
     shards: [],               // M7: cleared-letter glyphs that fly apart
     rings: [],                // M7: expanding shockwave rings
     popups: [],               // M7: floating score / combo / callout text
+    streaks: [],              // speed-lines behind typed letters and clears
     score: 0,
     combo: 0,
     bestCombo: 0,
@@ -322,6 +344,7 @@
     lockWord: null,
     autoClears: 0,
     spawnT: 0,
+    flareT: 7,                // seconds until the next flare word
     speed: CFG.baseSpeed,
     flash: 0,
     blockFlash: 0,
@@ -333,6 +356,11 @@
     clearFlash: 0,            // gold flash on a clear
     milestoneT: 0,            // combo milestone banner timer (also a body class)
     punch: 0,                 // short zoom-punch on a clear
+    keyPunch: 0,              // per-keystroke zoom spike (bigger and sharper than punch)
+    keyFlash: 0,              // per-keystroke full-frame colour flash
+    keyHue: 0,                // hue wheel position advanced by every keystroke
+    keyStreak: 0,             // rapid-typing meter: rises per key, decays fast
+    shock: 0,                 // clear shockwave-band timer
     waveClearT: 0,            // wave-complete celebration before the draft opens
     waveClearWave: 0,
     runStartBest: 0,          // records.bestScore when the run started
@@ -463,6 +491,7 @@
     state.shards.length = 0;
     state.rings.length = 0;
     state.popups.length = 0;
+    state.streaks.length = 0;
     state.score = 0;
     state.combo = 0;
     state.bestCombo = 0;
@@ -480,6 +509,7 @@
     state.lockWord = null;
     state.autoClears = 0;
     state.spawnT = 0.45;
+    state.flareT = 7;
     state.speed = CFG.baseSpeed;
     state.flash = 0;
     state.blockFlash = 0;
@@ -491,6 +521,10 @@
     state.clearFlash = 0;
     state.milestoneT = 0;
     state.punch = 0;
+    state.keyPunch = 0;
+    state.keyFlash = 0;
+    state.keyStreak = 0;
+    state.shock = 0;
     state.waveClearT = 0;
     state.waveClearWave = 0;
     state.runStartBest = records.bestScore || 0;
@@ -760,8 +794,16 @@
       w,
       progress: 0,
       fake: !!opts.fake,
+      flare: !!opts.flare,
       born: state.t,
       typedAt: [],
+      // Visual-only motion state: a short position history (the comet tail),
+      // a deterministic sway phase (no RNG, so seeded runs stay reproducible)
+      // and a hue seed that drives the trail colour.
+      trail: [],
+      trailT: 0,
+      sway: (nextId * 1.73) % (Math.PI * 2),
+      hue: (nextId * 0.137) % 1,
     };
     state.words.push(word);
     return word;
@@ -799,6 +841,35 @@
     state.spawnCount += 1;
     const every = splitEvery();
     if (every > 0 && state.spawnCount % every === 0) spawnExtra();
+    return word;
+  }
+
+  // Flare: a short word that drops in fast and is gone. It scores like a normal
+  // clear, but if it reaches the line it just slips through - no Life lost, no
+  // combo break. It deliberately ignores `maxWords` so it can always show up as
+  // an event, but it tries to pick a lane that is not already occupied.
+  function spawnFlare() {
+    const text = pickSpawnText(3, 5);
+    if (!text) return null;
+    const w = charW * text.length;
+    const maxX = Math.max(CFG.pad, W - CFG.pad - w);
+    let x = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const cand = CFG.pad + rng() * Math.max(0, maxX - CFG.pad);
+      let clear = true;
+      for (const other of state.words) {
+        if (cand + w + 14 > other.x && cand - 14 < other.x + other.w) { clear = false; break; }
+      }
+      if (clear) { x = cand; break; }
+    }
+    if (x == null) x = CFG.pad + rng() * Math.max(0, maxX - CFG.pad);
+    const word = spawnWord(text, { x, flare: true, y: -CFG.charH - 12 });
+    if (!word) return null;
+    word.harmless = true;      // no Life lost if it crosses the line
+    if (!state.simulating) {
+      playFlareSpawn();
+      popup(W / 2, 62, 'FLARE INCOMING', COL.flare, { size: 14, vy: -8, life: 0.95 });
+    }
     return word;
   }
 
@@ -887,6 +958,46 @@
     if (pool.length > max) pool.splice(0, pool.length - max);
   }
 
+  // Speed-lines: the trail primitive used by typing, clears and word motion.
+  // They are drawn as hard 1-3px streaks, which is cheap and reads as motion at
+  // any frame rate.
+  function addStreak(x, y, opts) {
+    if (state.simulating) return;
+    opts = opts || {};
+    const life = opts.life != null ? opts.life : 0.24;
+    state.streaks.push({
+      x,
+      y,
+      vx: opts.vx || 0,
+      vy: opts.vy != null ? opts.vy : -70,
+      len: opts.len != null ? opts.len : 8,
+      width: opts.width != null ? opts.width : 2,
+      life,
+      max: life,
+      color: opts.color || NEON(Math.random() * 6),
+      drag: opts.drag != null ? opts.drag : 3.2,
+    });
+    capPool(state.streaks, CFG.fxMaxStreaks);
+  }
+
+  function streakBurst(x, y, count, opts) {
+    if (state.simulating) return;
+    opts = opts || {};
+    const n = fxCount(count);
+    for (let i = 0; i < n; i++) {
+      const ang = opts.radial ? Math.random() * Math.PI * 2 : (Math.random() < 0.5 ? 0.8 : 2.3);
+      const sp = (opts.speed || 120) * (0.4 + Math.random());
+      addStreak(x + (Math.random() - 0.5) * (opts.spread || 12), y, {
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        len: 6 + Math.random() * 16,
+        width: Math.random() < 0.3 ? 3 : 1,
+        life: 0.16 + Math.random() * 0.24,
+        color: opts.color || NEON(Math.floor(Math.random() * 7) / 6),
+      });
+    }
+  }
+
   // Additive square sparks: the M4 particle, now with per-particle gravity and
   // drag so shards, debris and heat trails can share one cheap update loop.
   function addSpark(x, y, vx, vy, opts) {
@@ -905,43 +1016,58 @@
     });
   }
 
-  function burst(word, color, count) {
+  function burst(word, color, count, opts) {
     if (state.simulating) return;
+    opts = opts || {};
     const cx = clamp(word.x + word.w / 2, 0, W);
     const cy = word.y + CFG.charH / 2;
     const n = fxCount(count);
+    const power = opts.power || 1;
     for (let i = 0; i < n; i++) {
-      const ang = rng() * Math.PI * 2;
-      const sp = 40 + rng() * 170;
-      addSpark(cx, cy, Math.cos(ang) * sp, Math.sin(ang) * sp - 40, { color });
+      const ang = Math.random() * Math.PI * 2;
+      const sp = (40 + Math.random() * 170) * power;
+      addSpark(
+        cx + (Math.random() - 0.5) * (word.w * 0.9),
+        cy + (Math.random() - 0.5) * CFG.charH,
+        Math.cos(ang) * sp,
+        Math.sin(ang) * sp - 40,
+        {
+          color: color || NEON(Math.random() * 6),
+          life: 0.28 + Math.random() * 0.4,
+          max: 0.75,
+          size: Math.random() < 0.35 ? 3 : 2,
+        }
+      );
     }
     capPool(state.particles, CFG.fxMaxParticles);
   }
 
   // Every letter of a cleared word becomes a spinning glyph shard, so the word
-  // visibly comes apart exactly where the player typed it.
-  function shatter(word, color) {
+  // visibly comes apart exactly where the player typed it. `power` scales the
+  // explosion for clears, milestones and big combos.
+  function shatter(word, color, power) {
     if (state.simulating) return;
+    power = power || 1;
     const baseX = Math.max(4, Math.min(word.x, W - 4 - word.w));
     const glyphs = word.text.split('');
-    const max = Math.min(glyphs.length, fxCount(14));
+    const max = Math.min(glyphs.length, fxCount(14 * Math.min(power, 1.6)));
     for (let i = 0; i < max; i++) {
       const gx = baseX + i * charW + charW / 2;
-      const ang = -Math.PI / 2 + (rng() - 0.5) * 2.4;
-      const sp = 70 + rng() * 200;
+      const ang = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
+      const sp = (70 + Math.random() * 200) * power;
       state.shards.push({
         x: gx,
         y: word.y + CFG.charH / 2,
         vx: Math.cos(ang) * sp,
         vy: Math.sin(ang) * sp,
         g: 520,
-        rot: (rng() - 0.5) * 0.4,
-        vr: (rng() - 0.5) * 9,
-        life: 0.42 + rng() * 0.32,
-        max: 0.74,
+        rot: (Math.random() - 0.5) * 0.4,
+        vr: (Math.random() - 0.5) * 12,
+        life: 0.42 + Math.random() * 0.34,
+        max: 0.78,
         ch: glyphs[i],
-        color,
-        scale: 1 + rng() * 0.3,
+        color: color || NEON(Math.floor(Math.random() * 7) / 6),
+        scale: 1 + Math.random() * 0.4,
       });
     }
     capPool(state.shards, CFG.fxMaxShards);
@@ -981,14 +1107,58 @@
     capPool(state.popups, CFG.fxMaxPopups);
   }
 
+  // Per-keystroke overkill. Every correct letter detonates at its own glyph:
+  // a hue-cycled spark burst, speed-lines, a tiny shockwave and a punch/flash
+  // on the whole frame. Intensity climbs with the combo and with proximity to
+  // the danger line, so a hot streak feels physically loud.
+  function keyBurst(word, pos, urgent) {
+    if (state.simulating) return;
+    // Rapid typing feeds its own meter on top of the combo, so a clean burst of
+    // letters escalates the visual noise key by key instead of at word level.
+    state.keyStreak = Math.min(22, state.keyStreak + 1);
+    const px = clamp(word.x + pos * charW + charW / 2, 0, W);
+    const py = word.y + CFG.charH / 2;
+    const hype = clamp(state.keyStreak / 13, 0, 1) + (urgent ? 0.3 : 0) +
+      clamp(state.combo / 24, 0, 0.4);
+    state.keyHue = MOD(state.keyHue + 0.07 + Math.random() * 0.03, 1);
+    const color = hsl(state.keyHue, 1, 0.62);
+    const accent = hsl(MOD(state.keyHue + 0.42, 1), 1, 0.66);
+    for (let i = 0; i < fxCount(4 + Math.round(hype * 7)); i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * (150 + hype * 220);
+      addSpark(px, py, Math.cos(ang) * sp, Math.sin(ang) * sp - 30, {
+        color: Math.random() < 0.5 ? color : accent,
+        size: Math.random() < 0.35 ? 3 : 2,
+        life: 0.18 + Math.random() * 0.24,
+        max: 0.42,
+        g: 180,
+        drag: 2.2,
+      });
+    }
+    capPool(state.particles, CFG.fxMaxParticles);
+    streakBurst(px, py, 3 + Math.round(hype * 5), { speed: 140 + hype * 80, spread: 12, color });
+    ring(px, py, color, 20 + hype * 30, 0.16, 1);
+    if (hype > 0.55) ring(px, py, accent, 12 + hype * 14, 0.11, 1);
+    // The frame reacts too: a hard zoom spike and a coloured flash of the whole
+    // playfield, so every committed letter moves the picture.
+    state.keyPunch = Math.max(state.keyPunch, 0.3 + hype * 0.45);
+    state.keyFlash = Math.max(state.keyFlash, 0.09 + hype * 0.16);
+    state.shake = Math.max(state.shake, 0.07 + hype * 0.1);
+  }
+
   function milestone(combo) {
     if (state.simulating) return;
     state.milestoneT = 0.75;
-    state.clearFlash = Math.max(state.clearFlash, 0.8);
-    state.shake = Math.max(state.shake, 0.24);
+    state.clearFlash = Math.max(state.clearFlash, 0.9);
+    state.shake = Math.max(state.shake, 0.34);
     state.punch = Math.max(state.punch, 1);
-    popup(W / 2, H * 0.33, 'COMBO \u00d7' + combo, COL.gold, { size: 30, vy: -26, life: 1.1 });
-    ring(W / 2, H * 0.33, COL.gold, 300, 0.6, 3);
+    state.keyPunch = Math.max(state.keyPunch, 0.9);
+    state.shock = Math.max(state.shock, 0.5);
+    popup(W / 2, H * 0.33, 'COMBO \u00d7' + combo, hsl(0.14, 1, 0.63), { size: 34, vy: -26, life: 1.2 });
+    popup(W / 2, H * 0.33 + 34, 'OVERDRIVE', hsl(0.55, 1, 0.7), { size: 16, vy: -20, life: 1 });
+    ring(W / 2, H * 0.33, hsl(0.14, 1, 0.6), 320, 0.6, 3);
+    ring(W / 2, H * 0.33, hsl(0.55, 1, 0.65), 210, 0.42, 2);
+    streakBurst(W / 2, H * 0.33, 18, { speed: 320, radial: true, spread: 60 });
     playMilestone(combo);
   }
 
@@ -1010,10 +1180,12 @@
 
     if (auto) {
       state.autoClears += 1;
-      burst(word, COL.accent, 12);
-      shatter(word, COL.accent);
-      ring(cx, cy, COL.accent, 80, 0.32, 1);
-      popup(cx, word.y - 6, '+' + fmtInt(points), COL.accent, { size: 15, life: 0.6 });
+      const ac = hsl(MOD(state.t * 0.11 + 0.5, 1), 1, 0.65);
+      burst(word, ac, 14, { power: 1.1 });
+      shatter(word, ac, 1.1);
+      ring(cx, cy, ac, 90, 0.3, 1);
+      streakBurst(cx, cy, 6, { radial: true, speed: 150 });
+      popup(cx, word.y - 6, '+' + fmtInt(points), ac, { size: 16, life: 0.65 });
     } else {
       state.combo += 1;
       state.bestCombo = Math.max(state.bestCombo, state.combo);
@@ -1021,23 +1193,48 @@
       // clear, the longer the freeze-frame, the harder the hit.
       const proximity = clamp(1 - (state.groundY - (word.y + CFG.charH)) / 260, 0, 1);
       const close = proximity > 0.62;
-      state.hitPause = Math.max(state.hitPause, CFG.hitPause + proximity * 0.04);
-      state.shake = Math.max(state.shake, 0.15 + proximity * 0.32);
-      state.clearFlash = Math.max(state.clearFlash, 0.14 + proximity * 0.12);
-      state.punch = Math.max(state.punch, 0.55 + proximity * 0.45);
-      burst(word, COL.typed, 18 + Math.min(14, state.combo));
-      shatter(word, COL.white);
-      ring(cx, cy, COL.gold, 110 + proximity * 140, 0.34 + proximity * 0.14, 2);
-      popup(cx, word.y - 8, '+' + fmtInt(points), COL.gold, { size: 20 });
-      popup(cx, word.y + CFG.charH + 26, '\u00d7' + comboMultiplier().toFixed(2), COL.typed, {
-        size: 13, vy: -30, life: 0.7,
+      const power = 1 + Math.min(state.combo, 20) * 0.045 + proximity * 0.5;
+      const hueBase = MOD(state.t * 0.13 + state.combo * 0.06, 1);
+      const c1 = hsl(hueBase, 1, 0.63);
+      const c2 = hsl(MOD(hueBase + 0.33, 1), 1, 0.66);
+      const c3 = hsl(MOD(hueBase + 0.66, 1), 1, 0.68);
+      state.hitPause = Math.max(state.hitPause, CFG.hitPause + proximity * 0.05);
+      state.shake = Math.max(state.shake, 0.22 + proximity * 0.38);
+      state.clearFlash = Math.max(state.clearFlash, 0.18 + proximity * 0.14);
+      state.punch = Math.max(state.punch, 0.7 + proximity * 0.5);
+      state.keyPunch = Math.max(state.keyPunch, 0.9 + proximity * 0.4);
+      state.shock = Math.max(state.shock, 0.45 + proximity * 0.4);
+      // Everything at once: sparks, every glyph thrown off the word, a triple
+      // neon shockwave, radial speed-lines and three floating callouts.
+      burst(word, c1, 26 + Math.min(22, state.combo), { power });
+      shatter(word, c2, power);
+      streakBurst(cx, cy, 14 + Math.min(10, state.combo), { radial: true, speed: 260, spread: word.w });
+      ring(cx, cy, c1, 120 + proximity * 200 + state.combo * 4, 0.36 + proximity * 0.16, 3);
+      ring(cx, cy, c2, 70 + proximity * 120, 0.24, 2);
+      ring(cx, cy, c3, 40 + proximity * 50, 0.16, 1);
+      popup(cx, word.y - 8, '+' + fmtInt(points), c1, { size: 22 + Math.min(8, state.combo * 0.3) });
+      popup(cx, word.y + CFG.charH + 26, '\u00d7' + comboMultiplier().toFixed(2), c3, {
+        size: 14, vy: -30, life: 0.75,
       });
+      if (state.combo >= 4) {
+        popup(cx, word.y - 34, state.combo + ' IN A ROW', hsl(0.12, 1, 0.62), {
+          size: 12, vy: -18, life: 0.8,
+        });
+      }
       if (close) {
-        popup(cx, word.y - 30, 'CLOSE CALL', COL.danger, { size: 13, vy: -20, life: 0.85 });
-        state.shake = Math.max(state.shake, 0.36);
-        state.clearFlash = Math.max(state.clearFlash, 0.3);
+        popup(cx, word.y - 30, 'CLOSE CALL', hsl(0.0, 1, 0.6), { size: 14, vy: -20, life: 0.9 });
+        state.shake = Math.max(state.shake, 0.42);
+        state.clearFlash = Math.max(state.clearFlash, 0.34);
       }
       if (state.combo % MILESTONE_COMBO === 0) milestone(state.combo);
+      if (word.flare) {
+        // Flares are short, fast and harmless - clear one and it gets its own
+        // bright cyan beat on top of the normal impact.
+        ring(cx, cy, COL.flare, 190, 0.32, 2);
+        streakBurst(cx, cy, 12, { radial: true, speed: 320, color: COL.flare });
+        popup(cx, word.y - 30, 'FLARE!', COL.flare, { size: 16, vy: -26, life: 0.9 });
+        playFlareHit();
+      }
       playClear(state.combo, proximity, close, word.text.length);
       pulseStatus('score');
       pulseStatus('combo');
@@ -1096,21 +1293,25 @@
     state.waveClearT = 0.85;
     state.waveClearWave = state.wave;
     state.dangerLevel = 0;
-    state.punch = Math.max(state.punch, 0.8);
-    state.clearFlash = Math.max(state.clearFlash, 0.55);
-    state.shake = Math.max(state.shake, 0.2);
-    popup(W / 2, H * 0.37, 'RECEIVER PATCHED', COL.white, { size: 14, vy: -14, life: 1.1 });
-    popup(W / 2, H * 0.37, 'RECEIVER PATCHED', COL.white, { size: 14, vy: -14, life: 1.1 });
-    ring(W / 2, H * 0.42, COL.gold, 380, 0.7, 3);
-    ring(W / 2, H * 0.42, COL.gold, 240, 0.5, 2);
-    for (let i = 0; i < fxCount(34); i++) {
-      const ang = rng() * Math.PI * 2;
-      const sp = 150 + rng() * 320;
+    state.punch = Math.max(state.punch, 0.95);
+    state.keyPunch = Math.max(state.keyPunch, 0.9);
+    state.clearFlash = Math.max(state.clearFlash, 0.75);
+    state.shake = Math.max(state.shake, 0.3);
+    state.shock = Math.max(state.shock, 0.7);
+    popup(W / 2, H * 0.37, 'RECEIVER PATCHED', hsl(0.1, 0, 1), { size: 16, vy: -14, life: 1.15 });
+    ring(W / 2, H * 0.42, hsl(0.12, 1, 0.64), 400, 0.72, 4);
+    ring(W / 2, H * 0.42, hsl(0.52, 1, 0.68), 260, 0.52, 2);
+    ring(W / 2, H * 0.42, hsl(0.85, 1, 0.66), 150, 0.34, 2);
+    streakBurst(W / 2, H * 0.42, 26, { radial: true, speed: 380, spread: 40 });
+    for (let i = 0; i < fxCount(40); i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 150 + Math.random() * 360;
       addSpark(W / 2, H * 0.42, Math.cos(ang) * sp, Math.sin(ang) * sp, {
-        color: PARTICLE_COLORS[(rng() * PARTICLE_COLORS.length) | 0],
-        life: 0.5 + rng() * 0.5,
+        color: NEON(Math.floor(Math.random() * 7) / 6),
+        life: 0.5 + Math.random() * 0.5,
         max: 1,
         g: 180,
+        size: Math.random() < 0.35 ? 3 : 2,
       });
     }
     playWaveClear();
@@ -1317,14 +1518,11 @@
       if (word.progress >= word.text.length) {
         clearWord(word, false);
       } else {
-        // Per-letter impact: a spark and a short scale-pop on the typed glyph.
+        // Per-letter impact: the glyph detonates (see keyBurst).
         if (!state.simulating) {
           const pos = typingOrderIndex(word, word.progress - 1);
-          const px = clamp(word.x + pos * charW + charW / 2, 0, W);
-          const py = word.y + CFG.charH / 2;
-          addSpark(px, py, (rng() - 0.5) * 70, -20 - rng() * 40, {
-            color: COL.typed, size: 2, life: 0.2, max: 0.25, g: 120,
-          });
+          const urgent = word.y + CFG.charH > state.groundY - 130;
+          keyBurst(word, pos, urgent);
         }
         playKey(word.progress, word.text.length);
       }
@@ -1335,6 +1533,7 @@
 
   function mistake() {
     state.mistakes += 1;
+    state.keyStreak = 0;
     if (state.shields > 0) {
       state.shields -= 1;                                // Shield eats the hit, combo kept, no flash
       state.blockFlash = 0.18;
@@ -1343,12 +1542,16 @@
         if (t) {
           const cx = clamp(t.x + t.w / 2, 0, W);
           const cy = t.y + CFG.charH / 2;
-          ring(cx, cy, COL.white, 70, 0.22, 2);
-          for (let i = 0; i < fxCount(5); i++) {
-            addSpark(cx, cy, (rng() - 0.5) * 130, (rng() - 0.5) * 130, {
-              color: COL.white, size: 2, life: 0.22, max: 0.3, g: 60,
+          const sc = hsl(0.5, 1, 0.7);
+          ring(cx, cy, sc, 90, 0.24, 2);
+          ring(cx, cy, sc, 50, 0.16, 1);
+          streakBurst(cx, cy, 8, { radial: true, speed: 170, color: sc });
+          for (let i = 0; i < fxCount(7); i++) {
+            addSpark(cx, cy, (Math.random() - 0.5) * 170, (Math.random() - 0.5) * 170, {
+              color: sc, size: 2, life: 0.22, max: 0.3, g: 60,
             });
           }
+          state.keyFlash = Math.max(state.keyFlash, 0.14);
         }
         pulseStatus('shields');
       }
@@ -1357,12 +1560,18 @@
     }
     state.combo = 0;
     state.flash = CFG.mistakeFlash;
-    state.shake = Math.max(state.shake, 0.12);
+    state.shake = Math.max(state.shake, 0.2);
+    state.keyPunch = Math.max(state.keyPunch, 0.5);
+    state.keyFlash = Math.max(state.keyFlash, 0.2);
     if (!state.simulating) {
       const t = targetWord();
       if (t) {
         const cx = clamp(t.x + t.w / 2, 0, W);
-        popup(cx, t.y - 6, 'MISS', COL.danger, { size: 13, vy: -28, life: 0.6 });
+        const cy = t.y + CFG.charH / 2;
+        const rc = hsl(0.0, 1, 0.58);
+        popup(cx, t.y - 6, 'MISS', rc, { size: 16, vy: -30, life: 0.65 });
+        ring(cx, cy, rc, 130, 0.28, 2);
+        streakBurst(cx, cy, 9, { radial: true, speed: 190, color: rc });
       }
     }
     playMistake();
@@ -1371,7 +1580,18 @@
   function hitGround(word) {
     removeWord(word);
     if (word.fake) return;                               // fakes fall through harmlessly
-    if (word.harmless) return;                           // Split's free word costs no life
+    if (word.harmless) {
+      // Split's free word and flares cost no Life. A flare gets a visible
+      // "slipped past" cue at the line so the player knows it was harmless.
+      if (word.flare && !state.simulating) {
+        const cx = clamp(word.x + word.w / 2, 0, W);
+        ring(cx, state.groundY, COL.flare, 90, 0.24, 1);
+        streakBurst(cx, state.groundY - 6, 8, { radial: true, speed: 180, color: COL.flare });
+        popup(cx, state.groundY - 24, 'FLARE MISSED', COL.flare, { size: 11, vy: -18, life: 0.7 });
+        playFlareMiss();
+      }
+      return;
+    }
 
     // Lifeline: the first word that reaches the line is destroyed instead of
     // costing a Life. Combo is kept - it is a rare, once-per-run save.
@@ -1379,12 +1599,17 @@
       state.lifelineUsed = true;
       if (!state.simulating) {
         const cx = clamp(word.x + word.w / 2, 0, W);
-        shatter(word, COL.gold);
-        ring(cx, state.groundY, COL.gold, 300, 0.5, 3);
-        popup(cx, state.groundY - 48, 'LINE HELD', COL.gold, { size: 24, vy: -36, life: 1.1 });
-        state.clearFlash = Math.max(state.clearFlash, 0.5);
-        state.shake = Math.max(state.shake, 0.26);
-        state.punch = Math.max(state.punch, 0.7);
+        const lc = hsl(0.13, 1, 0.64);
+        shatter(word, lc, 1.4);
+        ring(cx, state.groundY, lc, 320, 0.55, 3);
+        ring(cx, state.groundY, hsl(0.55, 1, 0.68), 220, 0.4, 2);
+        streakBurst(cx, state.groundY - 12, 16, { radial: true, speed: 300, spread: 260 });
+        popup(cx, state.groundY - 48, 'LINE HELD', lc, { size: 26, vy: -36, life: 1.1 });
+        state.clearFlash = Math.max(state.clearFlash, 0.6);
+        state.keyFlash = Math.max(state.keyFlash, 0.5);
+        state.shake = Math.max(state.shake, 0.34);
+        state.punch = Math.max(state.punch, 0.8);
+        state.keyPunch = Math.max(state.keyPunch, 0.8);
         playLifeline();
       }
       return;
@@ -1392,16 +1617,23 @@
 
     state.combo = 0;
     state.flash = CFG.mistakeFlash;
-    state.shake = CFG.shakeHit;
+    state.shake = CFG.shakeHit * 1.3;
+    state.shock = Math.max(state.shock, 0.9);
+    state.keyFlash = Math.max(state.keyFlash, 0.35);
     state.lives -= 1;
     if (!state.simulating) {
       // The word breaks on the line: red glyph shards, a hard ring and a
       // full-screen damage pulse make losing a life unmissable.
-      shatter(word, COL.danger);
+      const rc = hsl(0.0, 1, 0.58);
+      shatter(word, rc, 1.6);
       const cx = clamp(word.x + word.w / 2, 0, W);
       const cy = state.groundY - CFG.charH / 2;
-      ring(cx, state.groundY, COL.danger, 220, 0.42, 3);
-      popup(cx, state.groundY - 40, '-1 LIFE', COL.danger, { size: 22, vy: -34, life: 1 });
+      const wide = 220 + word.w;
+      ring(cx, state.groundY, rc, wide, 0.46, 4);
+      ring(cx, state.groundY, hsl(0.08, 1, 0.6), wide * 0.6, 0.3, 2);
+      burst(word, rc, 30, { power: 1.8 });
+      streakBurst(cx, cy, 22, { radial: true, speed: 340, spread: word.w });
+      popup(cx, state.groundY - 40, '-1 LIFE', rc, { size: 26, vy: -34, life: 1.1 });
       state.clearFlash = 0;
       pulseStatus('lives');
     }
@@ -1423,6 +1655,10 @@
     state.clearFlash = Math.max(0, state.clearFlash - dt * 2.4);
     state.milestoneT = Math.max(0, state.milestoneT - dt);
     state.punch = Math.max(0, state.punch - dt * 6);
+    state.keyPunch = Math.max(0, state.keyPunch - dt * 10);
+    state.keyFlash = Math.max(0, state.keyFlash - dt * 4.2);
+    state.keyStreak = Math.max(0, state.keyStreak - dt * 11);
+    state.shock = Math.max(0, state.shock - dt * 2.4);
     state.shake = Math.max(0, state.shake - dt * 1.7);
     state.waveBanner = Math.max(0, state.waveBanner - dt);
     if (state.lastClear) {
@@ -1435,6 +1671,7 @@
     updateShards(dt);
     updateRings(dt);
     updatePopups(dt);
+    updateStreaks(dt);
 
     if (state.phase === 'draft') {
       state.draftAnim = Math.min(1, state.draftAnim + dt / CFG.draftRise);
@@ -1465,12 +1702,45 @@
       state.spawnT = spawnInterval();
     }
 
+    // Flare event: an occasional short word that races down and cannot cost a
+    // Life. It is timed rather than pressure-driven, so it reads as a bonus.
+    state.flareT -= dt;
+    if (state.flareT <= 0) {
+      state.flareT = CFG.flareMinGap + rng() * (CFG.flareMaxGap - CFG.flareMinGap);
+      spawnFlare();
+    }
+
     const longshotBoost = has('longshot') ? 1.05 : 1;
     const base = state.speed * (H / 900);
     for (const w of state.words) {
       const fakeBoost = w.fake ? CFG.fakeSpeedMult : 1;
-      const mult = (w.text.length >= 7 ? longshotBoost : 1) * fakeBoost;
+      const flareBoost = w.flare ? CFG.flareSpeedMult : 1;
+      const mult = (w.text.length >= 7 ? longshotBoost : 1) * fakeBoost * flareBoost;
       w.y += base * mult * dt;
+      // Flares leave a bright sparkle trail so the player can spot one coming.
+      if (!state.simulating && w.flare) {
+        w.sparkT = (w.sparkT || 0) - dt;
+        if (w.sparkT <= 0) {
+          w.sparkT = 0.04;
+          addStreak(w.x + Math.random() * w.w, w.y + Math.random() * CFG.charH, {
+            vy: -130 - Math.random() * 90,
+            life: 0.26 + Math.random() * 0.18,
+            len: 8 + Math.random() * 12,
+            width: 1,
+            color: COL.flare,
+          });
+        }
+      }
+      // Comet tail: sample the word's position a little under the RNG-free
+      // visual clock. Presentation only, so the headless sim skips it.
+      if (!state.simulating) {
+        w.trailT -= dt;
+        if (w.trailT <= 0) {
+          w.trailT = CFG.trailEvery;
+          w.trail.push({ x: w.x, y: w.y });
+          if (w.trail.length > CFG.trailLen) w.trail.shift();
+        }
+      }
     }
 
     for (let i = state.words.length - 1; i >= 0; i--) {
@@ -1565,94 +1835,103 @@
     }
   }
 
-  // ─── Playfield rendering - 16 colours, dithered, 1995 ────────────────────
-  const WORD_FONT = 'bold 24px "Lucida Console", "Courier New", monospace';
-  const PIXEL_FONT = '9px "Microsoft Sans Serif", Tahoma, sans-serif';
-  const PARTICLE_COLORS = ['#ffff00', '#ffffff', '#00a000', '#c0c0c0', '#ff0000'];
-
-  let dither25 = null;
-  let dither50 = null;
-
-  function makeDitherPatterns() {
-    const make = (dots) => {
-      const c = document.createElement('canvas');
-      c.width = 4;
-      c.height = 4;
-      const g = c.getContext('2d');
-      g.fillStyle = COL.skyDark;
-      g.fillRect(0, 0, 4, 4);
-      g.fillStyle = COL.skyLight;
-      for (const [x, y] of dots) g.fillRect(x, y, 1, 1);
-      return ctx.createPattern(c, 'repeat');
-    };
-    dither25 = make([[1, 1], [3, 3]]);
-    dither50 = make([[0, 0], [2, 0], [1, 1], [3, 1], [0, 2], [2, 2], [1, 3], [3, 3]]);
+  function updateStreaks(dt) {
+    for (let i = state.streaks.length - 1; i >= 0; i--) {
+      const s = state.streaks[i];
+      s.life -= dt;
+      if (s.life <= 0) {
+        state.streaks.splice(i, 1);
+        continue;
+      }
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vx *= 1 - (s.drag || 3) * dt;
+      s.vy *= 1 - (s.drag || 3) * dt;
+      s.len *= 1 - 1.6 * dt;
+    }
   }
 
+  // ─── Playfield rendering - soft-focus ─────────────────────────────────────
+  const WORD_FONT = 'bold 24px "Lucida Console", "Courier New", monospace';
+  const PIXEL_FONT = '9px "Microsoft Sans Serif", Tahoma, sans-serif';
+  const PARTICLE_COLORS = ['#ff2bd1', '#25f4ff', '#b6ff1a', '#ffae00', '#ffffff', '#8a5bff'];
+
   function render() {
+    // Draw the whole scene at low resolution, then upscale it into the visible
+    // canvas with smoothing. Everything - backdrop, words, hit effects - shares
+    // the same soft blur, and the pixel cost is a fraction of a full-res frame.
+    ctx = sctx;
     ctx.save();
-    if (state.punch > 0.01) {
-      const s = 1 + state.punch * 0.012;
+    const zoom = 1 + state.punch * 0.014 + state.keyPunch * 0.04;
+    if (zoom > 1.001) {
       ctx.translate(W / 2, H / 2);
-      ctx.scale(s, s);
+      ctx.scale(zoom, zoom);
       ctx.translate(-W / 2, -H / 2);
     }
     if (state.shake > 0.01) {
       ctx.translate(
-        Math.sin(state.t * 91) * state.shake * 9,
-        Math.cos(state.t * 67) * state.shake * 6
+        Math.sin(state.t * 91) * state.shake * 11,
+        Math.cos(state.t * 67) * state.shake * 7
       );
     }
-    drawSky();
-    drawStars();
-    drawSignalField();
-    drawAmbient();
+    drawBackdrop();
     drawEchoes();
     drawDangerLine();
     drawWords();
     drawShards();
     drawParticles();
+    drawStreaks();
     drawRings();
     drawPopups();
+    drawShockBands();
     drawWaveBanner();
     drawWaveClear();
     ctx.restore();
 
     drawEdgeFx();
     if (state.flash > 0) {
-      ctx.fillStyle = `rgba(255, 0, 0, ${(state.flash / CFG.mistakeFlash) * 0.18})`;
+      ctx.fillStyle = `rgba(255, 0, 0, ${(state.flash / CFG.mistakeFlash) * 0.22})`;
       ctx.fillRect(0, 0, W, H);
     }
     if (state.blockFlash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${(state.blockFlash / 0.18) * 0.10})`;
+      ctx.fillStyle = `rgba(120, 255, 255, ${(state.blockFlash / 0.18) * 0.12})`;
       ctx.fillRect(0, 0, W, H);
     }
     if (state.clearFlash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 0, ${state.clearFlash * 0.09})`;
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.16, state.clearFlash * 0.1)})`;
       ctx.fillRect(0, 0, W, H);
     }
+    drawKeyFlash();
+
+    // The upscale. This single smoothed draw is the heavy blur over the words.
+    ctx = out;
+    out.drawImage(scene, 0, 0, canvas.width, canvas.height);
     syncUi();
   }
 
-  // Ambient playfield motion: a slow scan sweep and rare interference bars.
-  // Everything is time-derived, never rng-derived, so rendering can never
-  // perturb the seeded gameplay stream.
-  function drawAmbient() {
-    if (settings.fx === 'light') return;
-    const sweep = ((state.t * 46) % (H + 80)) - 40;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
-    ctx.fillRect(0, Math.round(sweep), W, 1);
-
-    const cycle = state.t % 9;
-    if (cycle < 0.22) {
-      for (let i = 0; i < 3; i++) {
-        const seed = Math.sin(i * 91.7 + Math.floor(state.t * 24) * 13.3) * 0.5 + 0.5;
-        const yy = seed * (H - CFG.groundPad);
-        const hh = 1 + ((i * 7) % 3);
-        ctx.fillStyle = i % 2 ? 'rgba(0, 160, 160, 0.20)' : 'rgba(255, 255, 255, 0.09)';
-        ctx.fillRect(0, Math.round(yy), W, hh);
-      }
+  // The blurred backdrop: near-black with a handful of huge, very dim colour
+  // discs drifting slowly. There is no warping, no glitch and no rainbow layer;
+  // the low-resolution upscale is what turns these into soft out-of-focus blobs.
+  function drawBackdrop() {
+    ctx.fillStyle = '#04030a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of BG_BLOBS) {
+      const x = W * (b.x + Math.sin(state.t * b.sx + b.ph) * 0.06);
+      const y = H * (b.y + Math.cos(state.t * b.sy + b.ph) * 0.05);
+      const r = Math.max(W, H) * b.r * (1 + Math.sin(state.t * 0.05 + b.ph) * 0.05);
+      const hue = MOD(b.hue + state.t * 0.004, 1);
+      ctx.fillStyle = hsl(hue, 0.75, b.l, b.a);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
     }
+    ctx.globalCompositeOperation = 'source-over';
+    // A veil for word contrast, and a darker strip below the danger line.
+    ctx.fillStyle = 'rgba(3, 2, 10, 0.30)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(2, 1, 8, 0.7)';
+    ctx.fillRect(0, state.groundY, W, H - state.groundY);
   }
 
   // Combo and danger bleed into the frame edges, so the state of the run is
@@ -1660,96 +1939,84 @@
   function drawEdgeFx() {
     const combo = Math.min(state.combo, 20);
     if (combo >= 3) {
-      const a = 0.10 + (combo / 20) * 0.22;
-      const wide = 2 + Math.round((combo / 20) * 4);
-      ctx.fillStyle = `rgba(255, 255, 0, ${a})`;
+      const a = 0.12 + (combo / 20) * 0.26;
+      const wide = 2 + Math.round((combo / 20) * 5);
+      ctx.fillStyle = hsl(MOD(state.t * 0.09 + 0.14, 1), 1, 0.6, a);
       ctx.fillRect(0, 0, wide, H);
       ctx.fillRect(W - wide, 0, wide, H);
     }
     const danger = state.dangerLevel || 0;
     if (danger > 0.12) {
       const beat = 0.55 + 0.45 * Math.sin(state.t * 8);
-      ctx.fillStyle = `rgba(255, 0, 0, ${danger * 0.26 * beat})`;
+      ctx.fillStyle = `rgba(255, 0, 0, ${danger * 0.3 * beat})`;
       ctx.fillRect(0, 0, W, 3);
       ctx.fillRect(0, H - 3, W, 3);
+      ctx.fillStyle = hsl(0.0, 1, 0.6, danger * 0.18 * beat);
+      ctx.fillRect(0, 0, 8, H);
+      ctx.fillRect(W - 8, 0, 8, H);
     }
     if (state.lives <= 1 && state.phase === 'playing') {
       const pulse = 0.5 + 0.5 * Math.sin(state.t * 3.1);
-      ctx.fillStyle = `rgba(255, 0, 0, ${0.04 + pulse * 0.04})`;
+      ctx.fillStyle = `rgba(255, 0, 0, ${0.04 + pulse * 0.05})`;
       ctx.fillRect(0, 0, W, H);
     }
     if (state.phase === 'gameover') {
-      ctx.fillStyle = `rgba(255, 0, 0, ${0.10 + 0.05 * Math.sin(state.t * 2)})`;
+      ctx.fillStyle = `rgba(255, 0, 0, ${0.10 + 0.06 * Math.sin(state.t * 2)})`;
       ctx.fillRect(0, 0, W, H);
     }
     if (state.phase === 'dawn') {
-      ctx.fillStyle = `rgba(255, 255, 0, ${0.06 + 0.03 * Math.sin(state.t * 1.4)})`;
+      ctx.fillStyle = `rgba(255, 255, 0, ${0.06 + 0.04 * Math.sin(state.t * 1.4)})`;
       ctx.fillRect(0, 0, W, H);
     }
   }
 
-  function drawSky() {
-    if (!dither25) makeDitherPatterns();
-    ctx.fillStyle = COL.skyDark;
+  // The per-keystroke colour flash: each letter paints the frame with its own
+  // hue for a couple of frames.
+  function drawKeyFlash() {
+    if (state.keyFlash <= 0.006) return;
+    const a = Math.min(0.2, state.keyFlash * 0.85);
+    ctx.fillStyle = hsl(state.keyHue, 1, 0.6, a);
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = dither25;
-    ctx.fillRect(0, H * 0.40, W, H * 0.34);
-    ctx.fillStyle = dither50;
-    ctx.fillRect(0, H * 0.74, W, H * 0.26);
   }
 
-  function drawStars() {
-    ctx.fillStyle = COL.star;
-    for (const s of stars) {
-      const a = 0.35 + 0.5 * Math.abs(Math.sin(state.t * 1.6 + s.tw));
-      ctx.globalAlpha = a;
-      ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1);
+  // Expanding horizontal bands on a clear - the "screen just got hit" beat.
+  function drawShockBands() {
+    if (state.shock <= 0.02) return;
+    const spread = (1 - state.shock) * H * 0.55 + 24;
+    for (let i = 0; i < 4; i++) {
+      const a = state.shock * (0.5 - i * 0.09);
+      if (a <= 0) continue;
+      ctx.fillStyle = hsl(MOD(state.t * 0.15 + i * 0.3, 1), 1, 0.7, a);
+      const up = Math.round(H / 2 - spread - i * 20);
+      const down = Math.round(H / 2 + spread + i * 20);
+      ctx.fillRect(0, up, W, 3);
+      ctx.fillRect(0, down, W, 3);
     }
-    // Occasional signal flare crossing the sky (time-derived, no allocation).
-    const cyc = state.t % 11;
-    if (cyc < 0.8 && settings.fx !== 'light') {
-      const p = cyc / 0.8;
-      const sx = W * (0.18 + p * 0.72);
-      const sy = H * 0.12 + p * 120;
-      const fade = Math.sin(p * Math.PI);
-      ctx.globalAlpha = fade * 0.9;
-      ctx.fillStyle = COL.white;
-      ctx.fillRect(Math.round(sx), Math.round(sy), 2, 2);
-      ctx.globalAlpha = fade * 0.5;
-      ctx.fillRect(Math.round(sx - 7), Math.round(sy - 3), 2, 1);
+  }
+
+  function drawStreaks() {
+    if (!state.streaks.length) return;
+    for (const s of state.streaks) {
+      const a = Math.max(0, Math.min(1, s.life / s.max));
+      ctx.globalAlpha = a * 0.9;
+      ctx.fillStyle = s.color;
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), s.width, Math.max(1, Math.round(s.len)));
     }
     ctx.globalAlpha = 1;
-  }
-
-  // A frozen spectrum at the horizon: flat bars, no windows, no edges and no
-  // mast. The only colour accents are one-pixel caps, so the strip reads as
-  // signal noise rather than a city.
-  function drawSignalField() {
-    let i = 0;
-    for (const b of signalField) {
-      const lift = settings.fx === 'light' ? 0 : Math.round(Math.sin(state.t * 1.4 + i * 0.7) * 2);
-      i += 1;
-      const x = Math.round(b.x);
-      const top = Math.round(H - b.h) + lift;
-      const w = Math.max(1, Math.round(b.w));
-      const h = Math.round(b.h) - lift;
-      ctx.fillStyle = b.tone ? COL.building1 : COL.building0;
-      ctx.fillRect(x, top, w, h);
-      // Caps flicker like a spectrum analyser, one pixel at a time.
-      if (settings.fx !== 'light' && (i * 7 + Math.floor(state.t * 5)) % 13 === 0) continue;
-      ctx.fillStyle = b.cap;
-      ctx.fillRect(x, top, w, 1);
-    }
   }
 
   function drawEchoes() {
     ctx.font = WORD_FONT;
     ctx.textBaseline = 'top';
-    ctx.fillStyle = COL.echo;
     for (const e of state.echoes) {
+      const k = clamp(e.t / e.ttl, 0, 1);
+      const flicker = 0.55 + 0.45 * Math.sin(state.t * 9 + e.x * 0.01);
+      ctx.globalAlpha = (0.12 + k * 0.4) * flicker;
+      ctx.fillStyle = hsl(MOD(0.58 + state.t * 0.06, 1), 0.7, 0.68);
       const x = Math.max(4, Math.min(e.x, W - 4 - e.w));
-      ctx.fillText(e.text, x, e.y);
+      ctx.fillText(e.text, x, e.y + (1 - k) * 5);
     }
+    ctx.globalAlpha = 1;
   }
 
   function drawDangerLine() {
@@ -1793,30 +2060,50 @@
     const ordered = state.words.slice().sort((a, b) => a.y - b.y);
     for (const w of ordered) {
       const urgent = w.y + CFG.charH > state.groundY - 130;
-      let x = Math.max(4, Math.min(w.x, W - 4 - w.w));
-      if (urgent && w === target) x += Math.round(Math.sin(state.t * 42) * 1.5);
       const inSet = set.indexOf(w) >= 0;
       const isTarget = w === target;
+      // Idle sway: every word drifts on its own little orbit. Visual only.
+      const sway = light ? 0 : Math.sin(state.t * 1.55 + w.sway) * (isTarget ? 2.4 : 1.3);
+      let x = Math.max(4, Math.min(w.x + sway, W - 4 - w.w));
+      if (urgent && w === target) x += Math.round(Math.sin(state.t * 42) * 2);
 
       let color = COL.wordIdle;
       if (inSet) color = COL.wordSet;
       if (w.fake) color = COL.fake;
       if (w.harmless) color = COL.splitWord;
+      if (w.flare) color = COL.flare;
       if (isTarget) {
         color = urgent
           ? (Math.sin(state.t * 20) > 0 ? COL.danger : COL.gold)
           : COL.target;
       }
 
-      // Motion trail: fast words leave ghost copies of themselves behind.
-      if (!light && state.phase === 'playing') {
-        const speedRatio = clamp((state.speed - 54) / 46, 0, 1);
-        if (speedRatio > 0.04) {
-          ctx.fillStyle = color;
-          ctx.globalAlpha = 0.15 * speedRatio;
-          ctx.fillText(w.text, x, w.y - 10);
-          ctx.globalAlpha = 0.06 * speedRatio;
-          ctx.fillText(w.text, x, w.y - 21);
+      // ── Comet trail ──────────────────────────────────────────────────────
+      // Every word drags a fading neon tail behind it (sampled in update()).
+      // The colour is its own hue rotated into the background's wheel, so the
+      // trail reads as motion without stealing the word's own colour identity.
+      if (!light && state.phase === 'playing' && w.trail.length > 1) {
+        const trailColor = w.flare
+          ? COL.flare
+          : hsl(MOD(w.hue + state.t * 0.05 + 0.45, 1), 1, 0.62);
+        const speedRatio = clamp((state.speed - 40) / 60, 0, 1);
+        for (let k = 0; k < w.trail.length - 1; k++) {
+          const p = w.trail[k];
+          const a = (k + 1) / w.trail.length;
+          ctx.globalAlpha = ((w.flare ? 0.06 : 0.035) + (w.flare ? 0.3 : 0.2) * a) *
+            (0.6 + speedRatio * 0.4);
+          ctx.fillStyle = trailColor;
+          ctx.fillText(w.text, Math.max(4, Math.min(p.x, W - 4 - w.w)), p.y);
+        }
+        ctx.globalAlpha = 1;
+        // Speed-lines underneath the word: three hard vertical dashes.
+        if (speedRatio > 0.05) {
+          ctx.fillStyle = trailColor;
+          ctx.globalAlpha = (w.flare ? 0.3 : 0.16) + speedRatio * 0.3;
+          const lx = Math.max(4, Math.min(w.x + sway, W - 4 - w.w));
+          ctx.fillRect(lx + w.w * 0.25, w.y - 9, 1, 7 + speedRatio * 8);
+          ctx.fillRect(lx + w.w * 0.55, w.y - 13, 1, 9 + speedRatio * 10);
+          ctx.fillRect(lx + w.w * 0.82, w.y - 8, 1, 6 + speedRatio * 6);
           ctx.globalAlpha = 1;
         }
       }
@@ -1825,6 +2112,13 @@
       const spawnPhase = age < 0.24 ? age / 0.24 : 1;
       const spawning = spawnPhase < 1 && !light;
       if (spawning) ctx.globalAlpha = 0.35 + 0.65 * spawnPhase;
+
+      // Shadow pass first: one fillText for the whole word keeps glyphs legible
+      // over the bright parts of the tunnel without doubling the glyph cost.
+      if (!light) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+        ctx.fillText(w.text, x + 2, w.y + 2);
+      }
 
       for (let i = 0; i < w.text.length; i++) {
         const pos = rev ? w.text.length - 1 - i : i;
@@ -1839,16 +2133,28 @@
         // Words materialise out of the signal: a few glyphs flicker in first.
         if (spawning && (i * 37 + Math.floor(state.t * 34) * 17) % 7 < 2) continue;
 
-        // Typed letters pop: a short scale-up and a white flash on commit.
+        // Typed letters detonate: a big scale-pop with a red/cyan chromatic
+        // split, then they settle at the typed colour.
+        const popDur = 0.24;
         const pop = typed ? state.t - (w.typedAt[pos] || -9) : 9;
-        if (pop >= 0 && pop < 0.16) {
-          const k = pop / 0.16;
-          const scale = 1 + 0.55 * (1 - k);
+        if (pop >= 0 && pop < popDur) {
+          const k = pop / popDur;
+          const scale = 1 + (light ? 0.5 : 2.1) * (1 - k);
+          const glyph = w.text[i];
           ctx.save();
           ctx.translate(px + charW / 2, w.y + CFG.charH / 2);
           ctx.scale(scale, scale);
-          ctx.fillStyle = k < 0.35 ? COL.white : COL.typed;
-          ctx.fillText(w.text[i], -charW / 2, -CFG.charH / 2);
+          if (!light && k < 0.65) {
+            const off = 2 + (1 - k) * 5;
+            ctx.fillStyle = 'rgba(255, 0, 96, 0.9)';
+            ctx.fillText(glyph, -charW / 2 - off, -CFG.charH / 2);
+            ctx.fillStyle = 'rgba(0, 238, 255, 0.9)';
+            ctx.fillText(glyph, -charW / 2 + off, -CFG.charH / 2);
+          }
+          ctx.fillStyle = k < 0.45
+            ? COL.white
+            : hsl(MOD(state.keyHue + i * 0.05, 1), 1, 0.7);
+          ctx.fillText(glyph, -charW / 2, -CFG.charH / 2);
           ctx.restore();
           continue;
         }
@@ -1861,8 +2167,39 @@
       if (isTarget) drawTargetMarker(w, x, urgent);
       else if (inSet) drawSetMarker(w, x);
       if (w.fake) drawFakeMarker(w, x);
-      if (w.harmless) drawHarmlessMarker(w, x);
+      if (w.flare) drawFlareMarker(w, x);
+      else if (w.harmless) drawHarmlessMarker(w, x);
     }
+  }
+
+  // Flare: bright cyan chevrons above the word, a pulsing bracket and a dotted
+  // underline, so the fast harmless bonus word reads as an event rather than a
+  // normal target even through the soft-focus blur.
+  function drawFlareMarker(w, x) {
+    const beat = 0.5 + 0.5 * Math.sin(state.t * 12);
+    const cx = x + w.w / 2;
+    ctx.save();
+    ctx.fillStyle = COL.flare;
+    ctx.globalAlpha = 0.55 + beat * 0.4;
+    for (let i = 0; i < 2; i++) {
+      const yy = w.y - 8 - i * 5;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, yy);
+      ctx.lineTo(cx, yy - 4);
+      ctx.lineTo(cx + 6, yy);
+      ctx.lineTo(cx + 6, yy + 2);
+      ctx.lineTo(cx, yy - 2);
+      ctx.lineTo(cx - 6, yy + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Pulsing bracket around the word.
+    ctx.globalAlpha = 0.4 + beat * 0.45;
+    ctx.strokeStyle = COL.flare;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 4, w.y - 3, w.w + 8, CFG.charH + 6);
+    for (let px = x; px < x + w.w; px += 4) ctx.fillRect(px, w.y + CFG.charH + 4, 2, 2);
+    ctx.restore();
   }
 
   // Split's free word: dotted teal rule ABOVE the word (fakes are marked below).
@@ -2767,6 +3104,8 @@
 
   // ─── Audio (M4) ───────────────────────────────────────────────────────────
   let ac = null;
+  let master = null;
+  let clickBuf = null;
 
   function ensureAudio() {
     if (state.simulating || state.muted) return;
@@ -2775,14 +3114,63 @@
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         ac = new AC();
+        // Master chain: a little gain, then a compressor so the now-much-louder
+        // key clicks stay punchy instead of clipping when a clear chord lands
+        // on top of them.
+        master = ac.createGain();
+        master.gain.value = 1.25;
+        const comp = ac.createDynamicsCompressor();
+        comp.threshold.value = -15;
+        comp.knee.value = 8;
+        comp.ratio.value = 5;
+        comp.attack.value = 0.002;
+        comp.release.value = 0.14;
+        master.connect(comp);
+        comp.connect(ac.destination);
       }
       if (ac.state === 'suspended') ac.resume().catch(() => {});
+      if (!clickBuf) {
+        const len = Math.max(1, Math.floor(ac.sampleRate * 0.055));
+        clickBuf = ac.createBuffer(1, len, ac.sampleRate);
+        const data = clickBuf.getChannelData(0);
+        for (let i = 0; i < len; i++) {
+          // Sharp mechanical attack, fast decay - a keycap, not a hiss.
+          const k = i / len;
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - k, 3.6);
+        }
+      }
     } catch (e) { /* audio is optional */ }
+  }
+
+  function audioOut() {
+    return master || (ac ? ac.destination : null);
+  }
+
+  // Mechanical key click: a short filtered noise burst. This is the sound the
+  // player asked to be louder, so it gets its own path in front of the master.
+  function playClick(vol, freq) {
+    if (!ac || !clickBuf || state.muted || state.simulating) return;
+    try {
+      const src = ac.createBufferSource();
+      src.buffer = clickBuf;
+      const bp = ac.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = freq || (1300 + Math.random() * 900);
+      bp.Q.value = 0.9;
+      const g = ac.createGain();
+      g.gain.value = vol == null ? 0.6 : vol;
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(audioOut());
+      src.start(ac.currentTime);
+    } catch (e) { /* ignore */ }
   }
 
   function tone(freq, dur = 0.08, type = 'sine', gain = 0.04, slideTo = 0, when = 0) {
     if (!ac || state.muted || state.simulating) return;
     try {
+      const out = audioOut();
+      if (!out) return;
       const t0 = ac.currentTime + when;
       const osc = ac.createOscillator();
       const g = ac.createGain();
@@ -2793,17 +3181,20 @@
       g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.008);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       osc.connect(g);
-      g.connect(ac.destination);
+      g.connect(out);
       osc.start(t0);
       osc.stop(t0 + dur + 0.03);
     } catch (e) { /* ignore */ }
   }
 
   function playKey(pos, len) {
-    // Rising pitch as the word fills in; tiny click per committed letter.
+    // Rising pitch as the word fills in - now a proper mechanical thock layered
+    // under a bright click, roughly five times the old gain.
     const pitch = 120 + (pos || 1) * 13 + (len || 4) * 5;
-    tone(pitch, 0.018, 'square', 0.010);
-    if ((pos || 1) === 1) tone(pitch * 2, 0.012, 'square', 0.004);
+    tone(pitch, 0.042, 'square', 0.065);
+    tone(pitch * 0.5, 0.07, 'triangle', 0.05);
+    if ((pos || 1) === 1) tone(pitch * 2, 0.03, 'sawtooth', 0.03);
+    playClick(0.5);
   }
   function playClear(combo, proximity, close, letters) {
     // A three-note chord whose root climbs with the combo, plus a low thump
@@ -2825,6 +3216,19 @@
   function playAutoClear() {
     tone(660, 0.05, 'sine', 0.02);
     tone(990, 0.04, 'sine', 0.012, 0, 0.03);
+  }
+  // Flare words: a rising incoming whistle, a bright double chime on a hit, and
+  // a soft descending "slipped past" blip if it crosses the line.
+  function playFlareSpawn() {
+    tone(520, 0.22, 'sine', 0.025, 1040);
+    tone(780, 0.18, 'triangle', 0.014, 1560, 0.04);
+  }
+  function playFlareHit() {
+    tone(1046, 0.09, 'square', 0.03, 1568);
+    tone(1568, 0.14, 'sine', 0.035, 2093, 0.05);
+  }
+  function playFlareMiss() {
+    tone(440, 0.14, 'triangle', 0.022, 220);
   }
   function playWave() {
     tone(262, 0.09, 'square', 0.025, 0, 0);
@@ -3112,6 +3516,7 @@
       shards: state.shards.length,
       rings: state.rings.length,
       popups: state.popups.length,
+      streaks: state.streaks.length,
       milestone: state.milestoneT > 0,
       danger: state.dangerLevel,
       cssCombos: document.body.classList.contains('fx-combo-hot'),
@@ -3129,6 +3534,7 @@
     targetSet,
     spawnWord,
     spawnOne: spawn,
+    spawnFlare,
     beginDraft: openDraft,
     pick,
     reroll,

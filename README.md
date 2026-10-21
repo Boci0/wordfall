@@ -16,6 +16,50 @@ Balance data: [BALANCE-LAB.md](BALANCE-LAB.md).
 ![Draft dialog](shots/06-draft.png)
 ![Paused](shots/08-pause.png)
 
+## What's new in v1.4.1
+
+- **Softer blur.** The playfield is now rendered at 55% of the display resolution instead
+  of 40%, so the words are noticeably clearer while the whole picture keeps its soft-focus
+  look.
+- **Flare words.** Every 13-25 seconds a short 3-5 letter word races down at 2.5x speed,
+  tagged with cyan brackets and chevrons. It scores like any other clear, but if it reaches
+  the line it slips through harmlessly - no Life lost, no combo break. Ignore it or chase
+  it; it is never a penalty.
+- First release shipped through the in-app updater.
+
+## What's new in v1.4 (juice pass)
+
+- **The playfield is soft-focus.** Everything on the canvas - backdrop, words, particles,
+  trails - is drawn into a low-resolution scene and upscaled with smoothing, so the whole
+  picture carries a heavy blur, words included. Behind it sits a near-black backdrop with a
+  handful of huge, very dim colour discs that drift slowly. There is no warping, no
+  plasma, no rolling rainbow layer and no glitch tearing any more.
+- **Much faster.** The low-resolution scene is the main optimisation: the canvas paints
+  roughly 16% of the pixels it used to, the plasma pre-render and all of its full-screen
+  layers are gone, and the smoothed upscale is a single blit per frame. That is what
+  removed the lag.
+- **Typing is now an event.** Every committed letter detonates at its own glyph: a
+  hue-cycled spark burst, speed-lines, a shockwave ring, a red/cyan chromatic split of the
+  glyph, a hard zoom-punch, a full-frame colour flash and shake. Rapid typing feeds a
+  streak meter, so a clean burst escalates key by key; the intensity also climbs as the
+  target approaches the line.
+- **Clears got violent.** A cleared word shatters into every one of its glyphs, throws
+  radial speed-lines, fires three shockwave rings and expanding screen bands, and stamps
+  combo callouts. Combo milestones add an OVERDRIVE card and a ring storm.
+- **Words have trails.** Every falling word samples its position into a fading comet tail
+  and grows hard speed-lines underneath as the board heats up.
+- **Flares liven the board.** Every 13-25 seconds a short 3-5 letter word drops in at 2.5x
+  speed, marked with cyan brackets, chevrons and a bright sparkle trail. It scores like any
+  other clear, but if it reaches the line it slips through harmlessly - no Life lost, no
+  combo break. Chase it for points or let it pass; it never punishes you.
+- **Louder typing.** A new master chain (gain + compressor) sits in front of the effects
+  and every committed letter now fires a mechanical filtered-noise key click plus a
+  rising thock - roughly five times the old gain, without clipping.
+- **The original console is still in there.** The Windows 95 chrome, dialogs, draft and
+  rules are unchanged and stay crisp above the blurred playfield; **View → Effects: Light**
+  cuts the effect counts, `prefers-reduced-motion` is still respected, and the headless
+  bots are untouched because every new effect is presentation-only.
+
 ## What's new in v1.3
 
 - **In-app updater (native Windows build)** - Wordfall now checks the public GitHub
@@ -73,18 +117,21 @@ Balance data: [BALANCE-LAB.md](BALANCE-LAB.md).
   line. Tier II makes it every 3rd spawn.
 - Sound on/off is now remembered across launches.
 
-## Current build - Relay 12 / M7
+## Current build - Relay 12 / M7 + v1.4.1
 
 - **Background** - the game is now framed as the night shift at Relay 12. The Welcome and
-  About dialogs carry the setting, a one-line relay log appears at every draft, and the
-  playfield backdrop is an abstract signal horizon: irregular bars and spectrum clusters
-  instead of a literal city skyline, with no windows or mast.
+  About dialogs carry the setting, and a one-line relay log appears at every draft. The
+  playfield is deliberately soft-focus: a near-black backdrop with huge, dim, slowly
+  drifting colour discs, everything rendered at low resolution and upscaled so the whole
+  picture - words included - carries a heavy blur. There are no buildings, windows or mast,
+  and no warping or glitch layers.
 - **Smoother ramp** - the wave-4 cliff is gone. Word lengths now move one bound at a time
   across the run, spawn keeps tightening past wave 4, and fall speed keeps rising instead
   of capping at wave 5-6. Pressure, cards, Heat and scoring are unchanged.
-- **Impact and presentation (M7)** - the playfield effect layer and the draft-balance pass
-  described above; the game remains a single canvas plus DOM shell with no build step, and
-  the effect layer is capped and adaptive so a full board still holds 60fps.
+- **Impact and presentation (M7 + v1.4)** - the per-letter detonations, word trails,
+  shockwaves, soft-focus backdrop, louder typing and the low-resolution renderer that keeps
+  a full board at 60fps; the game remains a single canvas plus DOM shell with no build
+  step, and the effect layer is capped and adaptive.
 
 ## Run it
 
@@ -138,7 +185,7 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
   fall speed all read Pressure, so skipping does not dodge escalation.
 - **Dawn** at the end of wave 12 wins the run; play continues in endless mode, score-only.
 - **Relay log** - the draft shows one line of the night's log (`RELAY 12 - …`). It is
-  flavor only; the backdrop is abstract signal noise, not a city.
+  flavor only; the backdrop is a melting signal field, not a city.
 - **Lives** start at 1; a word touching the line costs one. **Shields** eat one wrong key
   each (combo kept, no flash) and refill when a wave starts.
 - **Heat** = hexes held (tier II counts twice); it multiplies score and keeps rising.
@@ -148,6 +195,10 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
   they drop through fast and are harmless, but while a fake is the lowest word every key
   is a mistake. **Split** drops an extra real 3-5 letter word every 5th spawn (every 3rd
   at tier II); it scores and blocks the words above it, but costs no life at the line.
+- **Flares** - every 13-25 seconds a short 3-5 letter word races down at 2.5x speed,
+  tagged with cyan brackets and chevrons. It scores like any other word, but if it reaches
+  the line it slips through harmlessly: no Life is lost and the combo is kept. It is a
+  bonus, never a penalty - take it for points or let it go.
 - **New M7 cards** - **Lifeline** destroys the first word that reaches the line instead of
   costing a Life; **Rally** makes word length read 10 (18 at tier II) less Pressure;
   **Drought** slows spawns by 15% (20% at tier II) and takes a 10-15% score cut;
@@ -156,11 +207,15 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
   **Longshot** only speeds up 7+ letter words by 5%, and **Ledger** no longer adds Pressure.
 - **Skip** pays `150 × wave` points and one temporary Shield for the wave that follows; it
   still counts as a draft and raises Pressure by 4.
-- **Feel** - each committed letter pops; a completed word shatters into letter shards with
-  a square shockwave, a proximity-scaled freeze-frame and shake, a rising chord and a score
-  pop-up; every tenth combo triggers a milestone burst; clearing a word near the line adds
-  a CLOSE CALL callout. Effects are capped and adaptive; **View → Effects** switches them
-  to Light (remembered across launches).
+- **Feel** - each committed letter now detonates at its own glyph with sparks,
+  speed-lines, a shockwave ring, a chromatic red/cyan split, a zoom-punch and a
+  full-frame colour flash, and rapid typing escalates the intensity key by key. Falling
+  words drag neon comet trails; a completed word shatters into every one of its glyphs
+  with three shockwave rings, screen bands, radial speed-lines, a proximity-scaled
+  freeze-frame and shake, a rising chord and score callouts. Every tenth combo triggers
+  an OVERDRIVE milestone burst; clearing a word near the line adds a CLOSE CALL callout.
+  Effects are capped and adaptive; **View → Effects** switches them to Light (remembered
+  across launches).
 - **Pause** (`Esc`, Game → Pause) freezes the words and the run clock; `Esc` or `Enter`, or
   Game → Resume, continues. The pause dialog shows `Seed N · MM:SS played`. Minimizing
   auto-pauses, and restoring resumes only that minimize-induced pause - not a pause you
@@ -190,10 +245,13 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
 | `tools/smoke.mjs` | Playwright smoke test - drives the real UI and asserts M1-M7 rules + effects/perf |
 | `tools/bot.mjs` | headless WPM bot - asserts the SPEC M5 balance targets |
 | `tools/balance-lab.mjs` | card-power + draft-economy lab (baseline/cards/offers/policies/CFG phases) |
-| `shots/` | screenshots written by the smoke test |
+| `tools/preview-juice.mjs` | visual preview harness - stages a board and writes `shots/juice-*.png` |
+| `tools/qa-juice.mjs` | independent v1.4 QA harness - two viewports, pixel-diff, audio-graph probe, real-click modal checks |
+| `shots/` | screenshots written by the smoke test and the preview/QA harnesses |
 | `QA-REPORT.md` | independent acceptance review of v1.0 |
 | `QA-REPORT-M6.md` | independent acceptance review of v1.1 / M6 |
 | `QA-REPORT-M7.md` | independent acceptance review of v1.2 / M7 |
+| `QA-JUICE.md` | independent acceptance review of the v1.4 juice pass (+ Lead addendum for the post-QA glitch fix) |
 | `BALANCE-LAB.md` | measured card power, draft-offer distribution and tuning recommendations |
 
 ### Presentation notes
@@ -202,15 +260,18 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
   whatever the window gives. Fall times and difficulty stay identical at any window size.
 - Everything around the playfield is ordinary DOM/CSS: the title bar, menus, toolbar,
   status bar, taskbar, Start menu and dialogs are real elements, not canvas drawings.
-- The playfield uses a 16-colour palette, ordered dithering for the sky, an abstract
-  signal-field horizon, Lucida Console words and square particles - deliberately
-  period-correct. The M7 effects are built from the same primitives: square particles,
-  glyph shards, square shockwave rings, dithered scanlines and hard-edged pop-up text.
-- The CSS FX overlay (`#fxOverlay`, scanlines/vignette/glow) is a separate layer above the
-  canvas and below the dialogs, pointer-events none, animated with transform/opacity only.
-  `game.js` drives it with a handful of CSS custom properties on `#app` (`--fx-combo`,
-  `--fx-danger`, `--fx-heat`, `--fx-lives`, `--fx-wave`) and phase/state classes on
-  `<body>`; `style.css` owns the look. No gradients or blur are used for the Win95 chrome.
+- The Win95 chrome stays 16-colour, bevel-correct and crisp. The playfield is drawn into a
+  small offscreen canvas at **55% of the display resolution** and upscaled with smoothing,
+  which is both the heavy soft-focus blur (it covers the words too) and the main
+  optimisation. Behind the words: a near-black field with six huge, very dim colour discs
+  that drift slowly. Lucida Console words, square particles, glyph shards and rectangular
+  pop-up text are all rendered into the same low-res scene, so they share the blur.
+- The CSS FX overlay (`#fxOverlay`: glow, vignette, scanlines, noise) is a separate layer
+  above the canvas and below the dialogs, pointer-events none, animated with
+  transform/opacity only. `game.js` drives it with a handful of CSS custom properties on
+  `#app` (`--fx-combo`, `--fx-danger`, `--fx-heat`, `--fx-lives`, `--fx-wave`) and
+  phase/state classes on `<body>`; `style.css` owns the look. No gradients or blur are used
+  for the Win95 chrome; the playfield effect layers are the only place gradients appear.
 
 ## Native app
 
@@ -305,7 +366,7 @@ or skipped drafts and checks the M5/M7 acceptance numbers at 100 and 400 seeds;
 `window.__wordfall` exposes `version` (`'M7'`), `state`, `CFG`, `CARDS` (18), `records`
 (live lifetime object), `settings` (`{muted, fx}`), `hexTotal` (6), `reset(seed?)`,
 `newRun()`, `pause()`, `resume()`, `stats()` (`{keys, mistakes, runSec, wpm, accuracy}`),
-`fxState()` (`{quality, particles, shards, rings, popups, milestone, danger, cssCombos}`),
+`fxState()` (`{quality, particles, shards, rings, popups, streaks, milestone, danger, cssCombos}`),
 `toggleEffects()`, `perf()` (`{avgMs, fps, pressure, quality}`), `typeLetter()`,
 `targetWord()`, `targetSet()`, `spawnWord()`, `spawnOne()`, `beginDraft()`, `pick()`,
 `reroll()`, `skip()`, `grant(id, tier)`, `setSeed(n)`, `pressure()`, `heat()`,
@@ -357,8 +418,9 @@ rarity curve lives in `slotRareChance()`, not in `CFG`. The shipped numbers are 
 - [x] M6 / v1.1 - pause, lifetime Records, run stats + seeds + Retry Seed, settings persistence, Split (13 cards)
 - [x] M7 / v1.2 - impact/effects layer + adaptive 60fps budget, Effects toggle, wave-clear beat, 18-card draft with a rebalanced pool, wave-scaled rarity, healthier Skip
 - [x] v1.3 - native in-app updater (GitHub release check, SHA-256-verified download, staged swap + relaunch, Help → Check for Updates…), Controls copy fixes
+- [x] v1.4 - juice pass: melting plasma backdrop, per-letter detonations, word comet trails, glitch/rainbow layers, reactive equaliser, louder mechanical key sounds
 - [x] Windows 95 presentation + native WinForms/WebView2 build
-- [x] Relay 12 background, draft log, abstract signal horizon + smoothed difficulty curve
+- [x] Relay 12 background, draft log, trippy signal field + smoothed difficulty curve
 
 Measured on the M7 build with the headless simulator (seed block 1000-1399; 400 seeds per
 cell, and the 60 WPM cell re-checked on an independent block, base 5000):

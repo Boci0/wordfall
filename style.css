@@ -838,7 +838,10 @@ u { text-underline-offset: 1px; }
   margin: 3px 2px;
 }
 
-/* A modal dialog turns the window frame into an inert backdrop, Win95-style. */
+/* A modal dialog turns the menu bar and toolbar into an inert backdrop,
+   Win95-style - but the title-bar buttons (minimize / maximize / close) stay
+   live on purpose: locking them while a dialog is up is infuriating when you
+   just want to minimise the window or quit. */
 .app.modal-open .menu-bar,
 .app.modal-open .toolbar {
   pointer-events: none;
@@ -847,19 +850,6 @@ u { text-underline-offset: 1px; }
 .app.modal-open .menu-label {
   color: var(--disabled);
 }
-
-/* Title-bar buttons are part of the inert frame while a dialog is up. */
-.app.modal-open .title-buttons { pointer-events: none; }
-
-.app.modal-open .title-btn { cursor: default; }
-
-.app.modal-open .title-btn.min i,
-.app.modal-open .title-btn.close i::before,
-.app.modal-open .title-btn.close i::after {
-  background: var(--disabled);
-}
-
-.app.modal-open .title-btn.max i { border-color: var(--disabled); }
 
 /* ── Native (WebView2) embedded mode ────────────────────────────────────── */
 body.embedded { background: #000; }
