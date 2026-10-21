@@ -19,25 +19,31 @@
 
     // layout
     pad: 32,                  // horizontal screen margin for words
-    groundPad: 96,            // height of the skyline strip at the bottom
+    groundPad: 96,            // height of the abstract signal strip at the bottom
     charH: 30,                // vertical footprint of one word
 
-    // difficulty ramp — every one of these reads `pressure`, not raw clears
-    baseSpeed: 52,            // px/s at a 900px-tall viewport
-    speedPerClear: 0.662,
-    maxSpeed: 95,
-    spawnStart: 2.8,          // seconds between spawns at run start
-    spawnMin: 1.25,
-    spawnDecay: 0.05,
+    // difficulty ramp — every one of these reads `pressure`, not raw clears.
+    // The ramp is deliberately spread across the whole run: the old curve hit the
+    // spawn floor and the first 4+ letter band on the same wave (wave 4), then
+    // stacked two more length jumps and the speed cap by wave 6.
+    baseSpeed: 54,            // px/s at a 900px-tall viewport
+    speedPerClear: 0.60,
+    maxSpeed: 100,
+    spawnStart: 2.85,         // seconds between spawns at run start
+    spawnMin: 1.16,
+    spawnDecay: 0.031,
     maxWords: 6,              // smaller queue, because words cross twice as fast
 
-    // word-length ramp: [pressureThreshold, [shortest, longest]] from the top down
+    // word-length ramp: [pressureThreshold, [shortest, longest]] from the top down.
+    // Each step moves at most one bound, roughly one notch every 1–2 waves.
     wordRangeSteps: [
       [10, [3, 5]],
       [22, [3, 6]],
-      [36, [4, 7]],
-      [48, [5, 8]],
-      [65, [6, 10]],
+      [38, [4, 6]],
+      [54, [4, 7]],
+      [68, [5, 8]],
+      [86, [6, 9]],
+      [105, [6, 10]],
       [Infinity, [6, 10]],
     ],
 
@@ -66,6 +72,23 @@
     // so a Decoy blocks the target for seconds, not for a whole fall.
     fakeSpeedMult: 4.5,
   };
+
+  // Relay 12: one story beat after each cleared wave. These are flavor only —
+  // no rule reads them. The endless line replaces the table after wave 12.
+  const RELAY_LOG = [
+    'The channel opens. Something on the other end is typing back.',
+    'The words are arriving out of order.',
+    'The signal is learning the shape of your hands.',
+    'Relay 12 is running hot.',
+    'The city has gone quiet.',
+    'You are not the only one listening.',
+    'The message is almost complete.',
+    'Do not read it aloud.',
+    'The horizon is flickering.',
+    'Dawn is a window, not a rescue.',
+    'Hold the line.',
+  ];
+  const ENDLESS_LOG = 'The channel is still open.';
 
   // 16-colour-era palette: no gradients, no glow, no alpha except fades.
   const COL = {
@@ -166,7 +189,7 @@
   let H = 0;
   let charW = 0;
   let stars = [];
-  let skyline = [];
+  let signalField = [];
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -188,7 +211,7 @@
 
     state.groundY = H - CFG.groundPad;
     stars = makeStars();
-    skyline = makeSkyline();
+    signalField = makeSignalField();
   }
 
   function makeStars() {
@@ -207,25 +230,25 @@
     return out;
   }
 
-  function makeSkyline() {
+  // The floor strip is an abstract signal field: irregular bars and clusters,
+  // no buildings, windows or mast. It reads as a spectrum frozen at the horizon
+  // and leaves the playfield free of literal scenery.
+  function makeSignalField() {
     const rnd = mulberry32(4242);
     const out = [];
-    let x = -10;
-    while (x < W + 10) {
-      const w = 26 + rnd() * 54;
-      const h = 14 + rnd() * (CFG.groundPad - 24);
-      const windows = [];
-      const cols = Math.max(1, Math.floor((w - 10) / 12));
-      const rows = Math.max(1, Math.floor((h - 10) / 14));
-      for (let cx = 0; cx < cols; cx++) {
-        for (let cy = 0; cy < rows; cy++) {
-          if (rnd() < 0.22) {
-            windows.push({ x: 6 + cx * 12, y: 8 + cy * 14, warm: rnd() < 0.7 });
-          }
-        }
-      }
-      out.push({ x, w, h, windows });
-      x += w + 3;
+    let x = -8;
+    while (x < W + 8) {
+      const cluster = rnd() < 0.16;
+      const w = cluster ? 7 + rnd() * 16 : 1 + rnd() * 4;
+      const h = 10 + rnd() * (CFG.groundPad - 18);
+      out.push({
+        x,
+        w,
+        h,
+        tone: rnd() < 0.5 ? 0 : 1,
+        cap: rnd() < 0.18 ? (rnd() < 0.6 ? COL.windowWarm : COL.windowCool) : COL.buildingTop,
+      });
+      x += w + 2 + rnd() * 7;
     }
     return out;
   }
@@ -1160,7 +1183,7 @@
     }
     drawSky();
     drawStars();
-    drawSkyline();
+    drawSignalField();
     drawEchoes();
     drawDangerLine();
     drawWords();
@@ -1198,20 +1221,19 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawSkyline() {
-    for (let i = 0; i < skyline.length; i++) {
-      const b = skyline[i];
-      const top = H - b.h;
-      ctx.fillStyle = i % 2 ? COL.building0 : COL.building1;
-      ctx.fillRect(Math.round(b.x), Math.round(top), Math.round(b.w), Math.round(b.h));
-      ctx.fillStyle = COL.buildingTop;
-      ctx.fillRect(Math.round(b.x), Math.round(top), Math.round(b.w), 1);
-      ctx.fillStyle = COL.buildingEdge;
-      ctx.fillRect(Math.round(b.x), Math.round(top), 1, Math.round(b.h));
-      for (const win of b.windows) {
-        ctx.fillStyle = win.warm ? COL.windowWarm : COL.windowCool;
-        ctx.fillRect(Math.round(b.x + win.x), Math.round(top + win.y), 2, 2);
-      }
+  // A frozen spectrum at the horizon: flat bars, no windows, no edges and no
+  // mast. The only colour accents are one-pixel caps, so the strip reads as
+  // signal noise rather than a city.
+  function drawSignalField() {
+    for (const b of signalField) {
+      const x = Math.round(b.x);
+      const top = Math.round(H - b.h);
+      const w = Math.max(1, Math.round(b.w));
+      const h = Math.round(b.h);
+      ctx.fillStyle = b.tone ? COL.building1 : COL.building0;
+      ctx.fillRect(x, top, w, h);
+      ctx.fillStyle = b.cap;
+      ctx.fillRect(x, top, w, 1);
     }
   }
 
@@ -1390,6 +1412,7 @@
     draft: {
       grid: $('draftGrid'),
       meta: $('draftMeta'),
+      log: $('draftLog'),
       held: $('draftHeld'),
       note: $('draftNote'),
       reroll: $('draftReroll'),
@@ -1534,6 +1557,10 @@
     ui.draft.grid.textContent = '';
     for (let i = 0; i < offer.length; i++) ui.draft.grid.appendChild(buildDraftCard(offer[i], i));
     setText(ui.draft.meta, `Wave ${state.wave} cleared · Pressure ${pressure()} · Combo kept`);
+    const logLine = state.endless || state.wave > RELAY_LOG.length
+      ? ENDLESS_LOG
+      : RELAY_LOG[Math.max(0, state.wave - 1)];
+    setText(ui.draft.log, `RELAY 12 \u2014 ${logLine}`);
     setText(ui.draft.held, 'Held: ' + heldCardsText());
     setText(
       ui.draft.note,

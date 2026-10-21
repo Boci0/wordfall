@@ -1,6 +1,8 @@
 # Wordfall
 
 *Wordfall for Windows* — a one-screen typing game dressed as a 1995 Windows application.
+You are the night operator at **Relay 12**, the city's last long-wave station; words are
+falling out of the dead channel and you have until Dawn to hold the line.
 **Read. Commit. Survive.** You may only type the word closest to the ground — everything
 else is inert until it becomes a target. Clear ten words and the board freezes for a
 draft of one card out of three. Every card bends the rule, the reading, or the economy.
@@ -28,6 +30,16 @@ and [QA-REPORT-M6.md](QA-REPORT-M6.md) (v1.1).
   word. It scores, blocks the words above it while it falls, and costs no life at the
   line. Tier II makes it every 3rd spawn.
 - Sound on/off is now remembered across launches.
+
+## Current build — Relay 12
+
+- **Background** — the game is now framed as the night shift at Relay 12. The Welcome and
+  About dialogs carry the setting, a one-line relay log appears at every draft, and the
+  playfield backdrop is an abstract signal horizon: irregular bars and spectrum clusters
+  instead of a literal city skyline, with no windows or mast.
+- **Smoother ramp** — the wave-4 cliff is gone. Word lengths now move one bound at a time
+  across the run, spawn keeps tightening past wave 4, and fall speed keeps rising instead
+  of capping at wave 5–6. Pressure, cards, Heat and scoring are unchanged.
 
 ## Run it
 
@@ -76,6 +88,8 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
 - **Pressure** = `cleared + 4 × drafts taken` (skips count). Word length, spawn rate and
   fall speed all read Pressure, so skipping does not dodge escalation.
 - **Dawn** at the end of wave 12 wins the run; play continues in endless mode, score-only.
+- **Relay log** — the draft shows one line of the night's log (`RELAY 12 — …`). It is
+  flavor only; the backdrop is abstract signal noise, not a city.
 - **Lives** start at 1; a word touching the line costs one. **Shields** eat one wrong key
   each (combo kept, no flash) and refill when a wave starts.
 - **Heat** = hexes held (tier II counts twice); it multiplies score and keeps rising.
@@ -121,8 +135,9 @@ Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and 
   whatever the window gives. Fall times and difficulty stay identical at any window size.
 - Everything around the playfield is ordinary DOM/CSS: the title bar, menus, toolbar,
   status bar, taskbar, Start menu and dialogs are real elements, not canvas drawings.
-- The playfield uses a 16-colour palette, ordered dithering for the sky, 2×2 pixel windows
-  in the skyline, Lucida Console words and square particles — deliberately period-correct.
+- The playfield uses a 16-colour palette, ordered dithering for the sky, an abstract
+  signal-field horizon, Lucida Console words and square particles — deliberately
+  period-correct.
 
 ## Native app
 
@@ -165,7 +180,7 @@ node tools/bot.mjs --seeds 400
 ```
 
 Both scripts launch headless Chrome through `playwright-core` (resolvable from the parent
-workspace). `smoke.mjs` (133 checks) plays words, checks that non-target words are inert,
+workspace). `smoke.mjs` (134 checks) plays words, checks that non-target words are inert,
 clears ten words to reach a draft, asserts every card's effect through the debug hook,
 checks draft eligibility over hundreds of seeded offers, forces a word onto the danger
 line, then covers the M6 features: pause freezes board and clock, Records load/save, seed
@@ -191,10 +206,15 @@ runs a full run synchronously on a virtual clock and returns
 
 The `CFG` block at the top of `game.js` owns the whole difficulty curve:
 
-- `baseSpeed`, `speedPerClear`, `maxSpeed` — fall speed (all read Pressure); the shipped
-  curve crosses the field in ~16 s at wave 1 and ~8.8 s at max Pressure
-- `spawnStart`, `spawnMin`, `spawnDecay`, `maxWords` — how fast the queue fills (6 max)
-- `wordRangeSteps` — `[pressureThreshold, [shortest, longest]]` word-length ramp
+- `baseSpeed` (54), `speedPerClear` (0.60), `maxSpeed` (100) — fall speed (all read
+  Pressure); the shipped curve crosses the field in ~15.5 s at wave 1 and ~8.4 s once
+  speed caps, around wave 7
+- `spawnStart` (2.85), `spawnMin` (1.16), `spawnDecay` (0.031), `maxWords` (6) — how fast
+  the queue fills; the interval keeps tightening through wave 4 and reaches its floor
+  around wave 5
+- `wordRangeSteps` — `[pressureThreshold, [shortest, longest]]` word-length ramp. Each step
+  moves at most one bound (3–5 → 3–6 → 4–6 → 4–7 → 5–8 → 6–9 → 6–10), so there is no
+  wave-4 cliff
 - `waveSize` (10), `wavesPerRun` (12), `pressurePerDraft` (4), `skipPointsPerWave` (50)
 - `fakeSpeedMult` — how much faster Decoy fakes drop than real words (4.5×)
 - feel: `hitPause`, `echoLife`, shake values, `heatStep`, `comboStep`, `comboCap`
@@ -211,15 +231,18 @@ The shipped numbers are tuned so `tools/bot.mjs` passes. If you change the curve
 - [x] M5 — 459-word pool + headless WPM bot + tuned curve
 - [x] M6 / v1.1 — pause, lifetime Records, run stats + seeds + Retry Seed, settings persistence, Split (13 cards)
 - [x] Windows 95 presentation + native WinForms/WebView2 build
+- [x] Relay 12 background, draft log, abstract signal horizon + smoothed difficulty curve
 
-Measured on v1.1 / M6 with `node tools/bot.mjs --seeds 400` (seed block 1000–1399); the
-default `--seeds 100` run gives median 6, 40% / 99%:
+Measured on the Relay 12 build with `node tools/bot.mjs --seeds 400` (seed block
+1000–1399); the default `--seeds 100` run gives median 7, 32% / 96%:
 
 | Cell | Result | SPEC M5 target |
 | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies 400/400 (100%), median wave 6, mean 6.24, {5:4, 6:299, 7:93, 8:4} | dies at wave 5–7 |
-| 60 WPM, random picks | Dawn 37.3% (149/400) | Dawn 30–50% |
-| 80 WPM, random picks | Dawn 98.8% (395/400) | Dawn > 70% |
+| 60 WPM, no cards (`skip`) | dies 400/400 (100%), median wave 7, mean 7.13, {6:1, 7:345, 8:53, 9:1} | dies at wave 5–7 |
+| 60 WPM, random picks | Dawn 33.0% (132/400) | Dawn 30–50% |
+| 80 WPM, random picks | Dawn 96.8% (387/400) | Dawn > 70% |
 
-A winning 80 WPM bot run reaches Dawn in ~224 s (3.7 min mean over 400 seeds); the SPEC's
-8–12 minute aspiration assumes human draft-reading time and imperfect play.
+An independent 400-seed block (base 5000) gives 36.0% and 96.3%, so the 60 WPM cell is not
+sitting on a single seed block. A winning 80 WPM bot run reaches Dawn in ~231 s (3.9 min
+mean over 400 seeds); the SPEC's 8–12 minute aspiration assumes human draft-reading time and
+imperfect play.

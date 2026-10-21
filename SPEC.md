@@ -3,8 +3,9 @@
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
 Status: **M1–M6 implemented**, shipped as v1.1, presented as a Windows 95-era desktop
-application (browser and native Windows build). M5 numbers, tuning notes and deviations
-are in §9; the M6 additions and their measured numbers are in §10.
+application (browser and native Windows build), plus the Relay 12 background and curve
+smoothing in §11. M5 numbers, tuning notes and deviations are in §9; the M6 additions and
+their measured numbers are in §10.
 
 ## 1. Pillar
 
@@ -16,6 +17,25 @@ Every card bends exactly one of three things:
 - **The economy:** score, speed, survival (Greed, Ledger, Grace, Slow Drift)
 
 If a proposed card doesn't bend one of these, cut it.
+
+## 1.1 Setting — Relay 12 (current build)
+
+Relay 12, 03:00. The city's last long-wave station is still on the air. After midnight the
+dead channel starts dropping words — fragments of a broadcast that was never sent. The
+player is the night operator: type each fragment before it reaches the line, patch the
+receiver when a wave ends, and hold the line until Dawn. "Signal Lost" is the relay going
+dark.
+
+The fiction is carried by:
+- the **Welcome** and **About** dialogs (setting + what Boons, Gambits and Hexes are in
+  diegetic terms);
+- a one-line **relay log** in every draft (`RELAY 12 — …`), one beat per cleared wave;
+- an **abstract signal horizon** in the playfield: irregular vertical bars and spectrum
+  clusters, no buildings, windows or mast. This is the only visual change; there is no
+  new screen and no new asset.
+
+Copy lives in `index.html` (Welcome/About) and `RELAY_LOG` in `game.js` (draft lines).
+The log is flavor only: no rule reads it.
 
 ## 2. Run structure
 
@@ -225,7 +245,7 @@ Run-to-run seed blocks vary by a few points; the shipped curve sits mid-band on 
   build, borderless native window with the same chrome in the native build. Real DOM/CSS
   elements (title bar, menu bar, toolbar, status bar, Start menu, modal dialogs), not
   canvas imitations: Win95 grey, 2px bevels, Tahoma / Microsoft Sans Serif.
-- The playfield is a 16-colour canvas: ordered-dither sky, 2×2 pixel skyline windows,
+- The playfield is a 16-colour canvas: ordered-dither sky, abstract signal-field horizon,
   Lucida Console words, square particles, dotted target brackets.
 - The rules run in a **fixed 800-unit-tall logical playfield**, uniformly scaled to the
   client area. This keeps fall times — and therefore difficulty — identical at any window
@@ -296,4 +316,51 @@ the web freeze: the published `dist\Wordfall-win64\` passes its own `--smoke` as
 `version:"M6"` / `embeddedMode:true` and embeds the frozen web files (`Wordfall.dll`
 contains the M6 strings). `dist/` is gitignored and regenerated, so a GitHub release must
 attach the built folder rather than rely on the repo.
+
+## 11. Relay 12 and curve smoothing (current build)
+
+**Problem.** Pressure was already linear, but the mapping from Pressure to difficulty was
+not. The old `wordRangeSteps` put the first 4+ band at pressure 36, the 5+ band at 48 and
+the 6–10 band at 65; `spawnInterval` hit its floor at pressure 31 and `maxSpeed` capped at
+65. Wave 4 was therefore the first wave with both the spawn floor and the 4–7 band, and
+waves 4–6 stacked three separate steps. That is the wave-4 cliff.
+
+**Background.** The game is now framed as the night shift at Relay 12: words fall out of a
+dead long-wave channel, the player patches the receiver at each wave break, and Dawn is the
+end of the shift. The Welcome/About copy and the one-line draft log (`RELAY_LOG` in
+`game.js`) carry it. The playfield backdrop is an abstract signal horizon — irregular bars
+and clusters of one-pixel caps, with no buildings, windows or mast — so the scenery reads as
+frozen signal noise rather than a literal city. No rule reads the log; no new screen or
+asset was added.
+
+**New curve (all in `CFG`).**
+
+| Key | Value |
+| --- | ---: |
+| `baseSpeed` | 54 |
+| `speedPerClear` | 0.60 |
+| `maxSpeed` | 100 |
+| `spawnStart` | 2.85 |
+| `spawnMin` | 1.16 |
+| `spawnDecay` | 0.031 |
+| `wordRangeSteps` | `[10,[3,5]] [22,[3,6]] [38,[4,6]] [54,[4,7]] [68,[5,8]] [86,[6,9]] [105,[6,10]]` |
+
+Each length step moves at most one bound. Wave 4 is `4–6` with a 1.55 s spawn interval
+instead of `4–7` with the 1.25 s floor. Fall speed keeps rising to pressure 77 instead of
+capping near wave 5–6. The 800-unit playfield crosses in ~15.5 s at wave 1 and ~8.4 s once
+the speed cap is reached.
+
+**Measured on the implemented build** (`node tools/bot.mjs --seeds 400`, seed block
+1000–1399; independent block 5000 in parentheses):
+
+| Cell | Result | M5 target | Status |
+| --- | --- | --- | --- |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.13, `{6:1, 7:345, 8:53, 9:1}` | median 5–7 | PASS |
+| 60 WPM, random picks | Dawn 33.0% (132/400); 36.0% (144/400) | 30–50% | PASS |
+| 80 WPM, random picks | Dawn 96.8% (387/400); 96.3% (385/400) | >70% | PASS |
+
+The default 100-seed run gives median 7, 32.0% and 96.0%. The 80 WPM winning run averages
+~231 s. `node tools/smoke.mjs` passes 134/134, including a new check that the draft log is
+populated. The debug hook stays `version: 'M6'` so the existing bot/smoke harnesses keep
+working; this is a tuning/presentation update, not a new numbered milestone.
 

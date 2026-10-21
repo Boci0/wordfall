@@ -494,6 +494,17 @@ u { text-underline-offset: 1px; }
 
 .draft-meta { margin: 0 0 8px; }
 
+.draft-log {
+  margin: 0 0 8px;
+  padding: 5px 0 0;
+  border-top: 1px solid var(--shadow);
+  color: #404040;
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  min-height: 19px;
+}
+
 .draft-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

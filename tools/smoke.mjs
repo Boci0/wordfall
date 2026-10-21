@@ -451,6 +451,20 @@ try {
     );
     check('M2: combo carries into the draft', draft.combo === 10, { combo: draft.combo, bestCombo: draft.bestCombo }, 'combo 10');
     check('M2: pressure before the first draft is cleared + 4*drafts', draft.pressure === draft.cleared + 4 * draft.draftsTaken, draft.pressure, draft.cleared + 4 * draft.draftsTaken);
+    await page.waitForFunction(() => {
+      const el = document.getElementById('draftLog');
+      return !!el && el.textContent.trim().startsWith('RELAY 12');
+    }, null, { timeout: 5000 });
+    const draftLog = await wf(() => {
+      const el = document.getElementById('draftLog');
+      return el ? el.textContent.trim() : '';
+    });
+    check(
+      'M2: the Relay 12 log line is shown in the draft',
+      draftLog.startsWith('RELAY 12') && draftLog.length > 20,
+      draftLog,
+      "starts with 'RELAY 12', non-empty"
+    );
     notes.draftOffer = draft.offer;
 
     // Board freezes while drafting.
