@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="#008080" />
+  <title>Wordfall for Windows</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='2' width='14' height='12' fill='%23c0c0c0' stroke='%23000'/%3E%3Crect x='1' y='2' width='14' height='3' fill='%23000080'/%3E%3Crect x='2' y='6' width='12' height='7' fill='%23008080'/%3E%3Crect x='4' y='8' width='6' height='1' fill='%23ffff00'/%3E%3Crect x='6' y='10' width='5' height='1' fill='%23ffffff'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="win95">
+
+  <!-- Desktop -->
+  <div class="desktop" id="desktop">
+
+    <div class="desktop-icons">
+      <div class="desktop-icon selected" id="iconWordfall" title="Wordfall">
+        <svg class="icon32" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="2" y="4" width="28" height="24" fill="#c0c0c0" stroke="#000" stroke-width="1"/>
+          <rect x="3" y="5" width="26" height="22" fill="#c0c0c0"/>
+          <rect x="3" y="5" width="26" height="6" fill="#000080"/>
+          <rect x="4" y="12" width="24" height="14" fill="#008080"/>
+          <rect x="6" y="14" width="9" height="2" fill="#ffff00"/>
+          <rect x="12" y="18" width="12" height="2" fill="#ffffff"/>
+          <rect x="7" y="22" width="7" height="2" fill="#c0c0c0"/>
+          <rect x="19" y="6" width="8" height="1" fill="#dfdfdf"/>
+        </svg>
+        <span class="desktop-label">Wordfall</span>
+      </div>
+      <div class="desktop-icon" id="iconReadme" title="Readme.txt">
+        <svg class="icon32" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="6" y="3" width="18" height="26" fill="#ffffff" stroke="#000"/>
+          <path d="M24 3 h4 v6 h-4z" fill="#c0c0c0"/>
+          <rect x="9" y="9" width="12" height="1" fill="#000080"/>
+          <rect x="9" y="12" width="12" height="1" fill="#808080"/>
+          <rect x="9" y="15" width="12" height="1" fill="#808080"/>
+          <rect x="9" y="18" width="9" height="1" fill="#808080"/>
+          <rect x="9" y="21" width="11" height="1" fill="#808080"/>
+        </svg>
+        <span class="desktop-label">Readme.txt</span>
+      </div>
+    </div>
+
+    <!-- Application window -->
+    <div class="window app" id="app">
+      <div class="title-bar" id="titleBar">
+        <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="1" y="2" width="14" height="12" fill="#c0c0c0" stroke="#000"/>
+          <rect x="1" y="2" width="14" height="3" fill="#000080"/>
+          <rect x="2" y="6" width="12" height="7" fill="#008080"/>
+          <rect x="4" y="8" width="5" height="1" fill="#ffff00"/>
+          <rect x="6" y="10" width="5" height="1" fill="#ffffff"/>
+        </svg>
+        <span class="title-text" id="titleText">Wordfall — Untitled</span>
+        <div class="title-buttons">
+          <div class="title-btn min" id="btnMin" title="Minimize"><i></i></div>
+          <div class="title-btn max" id="btnMax" title="Maximize"><i></i></div>
+          <div class="title-btn close" id="btnClose" title="Close"><i></i></div>
+        </div>
+      </div>
+
+      <div class="menu-bar" id="menuBar">
+        <div class="menu-item" data-menu="file">
+          <span class="menu-label"><u>F</u>ile</span>
+          <div class="dropdown">
+            <div class="drop-item" data-cmd="new">New Run<span class="shortcut">F2</span></div>
+            <div class="drop-sep"></div>
+            <div class="drop-item" data-cmd="exit">Exit Wordfall</div>
+          </div>
+        </div>
+        <div class="menu-item" data-menu="game">
+          <span class="menu-label"><u>G</u>ame</span>
+          <div class="dropdown">
+            <div class="drop-item" data-cmd="reroll" id="menuReroll">Reroll<span class="shortcut">R</span></div>
+            <div class="drop-item" data-cmd="skip" id="menuSkip">Skip Draft<span class="shortcut">S</span></div>
+            <div class="drop-sep"></div>
+            <div class="drop-item" data-cmd="new">Restart Run<span class="shortcut">F2</span></div>
+          </div>
+        </div>
+        <div class="menu-item" data-menu="view">
+          <span class="menu-label"><u>V</u>iew</span>
+          <div class="dropdown">
+            <div class="drop-item" data-cmd="sound" id="menuSound">Sound: On</div>
+            <div class="drop-sep"></div>
+            <div class="drop-item" data-cmd="maximize" id="menuMaximize">Maximize</div>
+            <div class="drop-item" data-cmd="controls">Controls…</div>
+          </div>
+        </div>
+        <div class="menu-item" data-menu="help">
+          <span class="menu-label"><u>H</u>elp</span>
+          <div class="dropdown">
+            <div class="drop-item" data-cmd="controls">Controls…</div>
+            <div class="drop-sep"></div>
+            <div class="drop-item" data-cmd="about">About Wordfall…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar" id="toolbar">
+        <div class="tool-btn" id="tbNew" title="New run (F2)">
+          <svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+            <rect x="3" y="1" width="9" height="13" fill="#ffffff" stroke="#000"/>
+            <path d="M10 1 h3 v3 h-3z" fill="#c0c0c0"/>
+            <rect x="5" y="5" width="6" height="1" fill="#000080"/>
+            <rect x="5" y="8" width="6" height="1" fill="#808080"/>
+            <rect x="5" y="11" width="4" height="1" fill="#808080"/>
+          </svg>
+        </div>
+        <div class="tool-btn" id="tbSound" title="Toggle sound">
+          <svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+            <rect x="1" y="6" width="3" height="4" fill="#000"/>
+            <path d="M4 4 l4 -2 v12 l-4 -2z" fill="#000"/>
+            <rect x="10" y="4" width="1" height="8" fill="#000"/>
+            <rect x="12" y="5" width="1" height="6" fill="#000"/>
+            <rect x="14" y="7" width="1" height="2" fill="#000"/>
+          </svg>
+        </div>
+        <div class="tool-btn" id="tbHelp" title="Controls">
+          <svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+            <rect x="3" y="2" width="10" height="12" fill="#ffffff" stroke="#000"/>
+            <text x="8" y="11.5" font-family="Tahoma, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#000080">?</text>
+          </svg>
+        </div>
+        <div class="tool-sep"></div>
+        <div class="tool-field" id="deckField">No cards</div>
+      </div>
+
+      <div class="client" id="client">
+        <canvas id="game"></canvas>
+
+        <div class="modal-layer" id="modalLayer">
+          <div class="modal-backdrop" id="modalBackdrop"></div>
+
+          <!-- Welcome -->
+          <div class="dialog dlg-welcome" id="dlgWelcome">
+            <div class="dialog-title"><span>Wordfall for Windows</span></div>
+            <div class="dialog-body welcome-body">
+              <svg class="welcome-icon" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
+                <rect x="2" y="4" width="28" height="24" fill="#c0c0c0" stroke="#000"/>
+                <rect x="3" y="5" width="26" height="6" fill="#000080"/>
+                <rect x="4" y="12" width="24" height="14" fill="#008080"/>
+                <rect x="6" y="14" width="9" height="2" fill="#ffff00"/>
+                <rect x="12" y="18" width="12" height="2" fill="#ffffff"/>
+              </svg>
+              <div class="welcome-text">
+                <div class="welcome-head">A one-screen typing game</div>
+                <p>Type only the word closest to the ground. Every other word is inert.</p>
+                <p>Clear 10 words to draft a card. Survive 12 waves to reach Dawn.</p>
+                <p class="welcome-best" id="welcomeBest">Best score: 0</p>
+              </div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="welcomeStart">Start</button>
+              <button type="button" tabindex="-1" class="btn" id="welcomeControls">Controls…</button>
+            </div>
+          </div>
+
+          <!-- Draft -->
+          <div class="dialog dlg-draft" id="dlgDraft">
+            <div class="dialog-title"><span>Draft</span></div>
+            <div class="dialog-body">
+              <div class="draft-meta" id="draftMeta"></div>
+              <div class="draft-grid" id="draftGrid"></div>
+              <div class="draft-held" id="draftHeld"></div>
+              <div class="draft-note" id="draftNote"></div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn" id="draftReroll">Reroll</button>
+              <button type="button" tabindex="-1" class="btn" id="draftSkip">Skip</button>
+            </div>
+          </div>
+
+          <!-- Game over -->
+          <div class="dialog dlg-message" id="dlgGameover">
+            <div class="dialog-title"><span>Signal Lost</span></div>
+            <div class="dialog-body">
+              <div class="big-score" id="overScore">0</div>
+              <div class="stats" id="overStats"></div>
+              <div class="held-line" id="overDeck"></div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="overRetry">Retry</button>
+              <button type="button" tabindex="-1" class="btn" id="overQuit">Quit</button>
+            </div>
+          </div>
+
+          <!-- Dawn -->
+          <div class="dialog dlg-message" id="dlgDawn">
+            <div class="dialog-title"><span>Dawn</span></div>
+            <div class="dialog-body">
+              <div class="big-score dawn-score" id="dawnScore">0</div>
+              <div class="stats" id="dawnStats"></div>
+              <div class="held-line" id="dawnDeck"></div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="dawnKeep">Keep Playing</button>
+              <button type="button" tabindex="-1" class="btn" id="dawnNew">New Run</button>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="dialog dlg-help" id="dlgControls">
+            <div class="dialog-title"><span>Controls</span></div>
+            <div class="dialog-body">
+              <table class="key-table">
+                <tr><td class="key">A – Z</td><td>Type the target word</td></tr>
+                <tr><td class="key">Enter</td><td>Start · Retry · Continue after Dawn</td></tr>
+                <tr><td class="key">1 2 3</td><td>Draft: pick a card</td></tr>
+                <tr><td class="key">R</td><td>Draft: reroll the offer (once per run)</td></tr>
+                <tr><td class="key">S</td><td>Draft: skip (+50 × wave points, pressure still rises)</td></tr>
+                <tr><td class="key">F2</td><td>New run</td></tr>
+                <tr><td class="key">Esc</td><td>Close this dialog / menu</td></tr>
+              </table>
+              <p class="fine-print">Words closest to the line may only be typed in order. A wrong key resets the combo.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="controlsOk">OK</button>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div class="dialog dlg-help" id="dlgAbout">
+            <div class="dialog-title"><span>About Wordfall</span></div>
+            <div class="dialog-body about-body">
+              <svg class="about-icon" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
+                <rect x="2" y="4" width="28" height="24" fill="#c0c0c0" stroke="#000"/>
+                <rect x="3" y="5" width="26" height="6" fill="#000080"/>
+                <rect x="4" y="12" width="24" height="14" fill="#008080"/>
+                <rect x="6" y="14" width="9" height="2" fill="#ffff00"/>
+                <rect x="12" y="18" width="12" height="2" fill="#ffffff"/>
+              </svg>
+              <div>
+                <div class="about-head">Wordfall for Windows</div>
+                <div class="about-ver">Version 1.0 · 16-colour edition</div>
+                <p>Read. Commit. Survive.</p>
+                <p class="fine-print">A one-screen typing game with a draft-only roguelite layer.<br>
+                Keyboard required. No installer, no telemetry, no map, no branches.</p>
+                <p class="fine-print">Best score on this machine: <span id="aboutBest">0</span></p>
+              </div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="aboutOk">OK</button>
+            </div>
+          </div>
+
+          <!-- Quit confirmation -->
+          <div class="dialog dlg-quit" id="dlgQuit">
+            <div class="dialog-title"><span>Wordfall</span></div>
+            <div class="dialog-body quit-body">
+              <svg class="quit-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+                <rect x="1" y="2" width="14" height="12" fill="#c0c0c0" stroke="#000"/>
+                <rect x="1" y="2" width="14" height="3" fill="#000080"/>
+                <rect x="2" y="6" width="12" height="7" fill="#008080"/>
+              </svg>
+              <div>
+                <p class="quit-line">Are you sure you want to quit Wordfall?</p>
+                <p class="fine-print">The current run will be lost.</p>
+              </div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="quitYes">Yes</button>
+              <button type="button" tabindex="-1" class="btn" id="quitNo">No</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-bar" id="statusBar">
+        <div class="status-panel grow" id="statusMain">Ready</div>
+        <div class="status-panel" id="statusScore">Score: 0</div>
+        <div class="status-panel" id="statusWave">Wave: 1/12</div>
+        <div class="status-panel" id="statusLives">Lives: 1</div>
+        <div class="status-panel" id="statusShields">Shields: 0/0</div>
+        <div class="status-panel" id="statusHeat">Heat: 0</div>
+        <div class="status-panel" id="statusPressure">Pressure: 0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Taskbar -->
+  <div class="taskbar" id="taskbar">
+    <div class="start-btn" id="startBtn">
+      <svg class="flag" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+        <rect x="2" y="3" width="5" height="5" fill="#ff0000"/>
+        <rect x="8" y="3" width="5" height="5" fill="#00a000"/>
+        <rect x="2" y="9" width="5" height="5" fill="#0000ff"/>
+        <rect x="8" y="9" width="5" height="5" fill="#ffff00"/>
+      </svg>
+      <span>Start</span>
+    </div>
+    <div class="task-divider"></div>
+    <div class="task-btn" id="taskBtn">
+      <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+        <rect x="1" y="2" width="14" height="12" fill="#c0c0c0" stroke="#000"/>
+        <rect x="1" y="2" width="14" height="3" fill="#000080"/>
+        <rect x="2" y="6" width="12" height="7" fill="#008080"/>
+        <rect x="4" y="8" width="5" height="1" fill="#ffff00"/>
+      </svg>
+      <span id="taskText">Wordfall — Untitled</span>
+    </div>
+    <div class="taskbar-spacer"></div>
+    <div class="clock" id="clock">12:00 PM</div>
+  </div>
+
+  <!-- Start menu -->
+  <div class="start-menu" id="startMenu">
+    <div class="start-banner"><span>Wordfall 95</span></div>
+    <div class="start-items">
+      <div class="start-item" data-cmd="restore">
+        <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="1" y="2" width="14" height="12" fill="#c0c0c0" stroke="#000"/>
+          <rect x="1" y="2" width="14" height="3" fill="#000080"/>
+          <rect x="2" y="6" width="12" height="7" fill="#008080"/>
+          <rect x="4" y="8" width="5" height="1" fill="#ffff00"/>
+        </svg>
+        <span>Wordfall</span>
+      </div>
+      <div class="start-sep"></div>
+      <div class="start-item" data-cmd="controls">
+        <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="3" y="2" width="10" height="12" fill="#ffffff" stroke="#000"/>
+          <text x="8" y="11.5" font-family="Tahoma, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#000080">?</text>
+        </svg>
+        <span>Controls…</span>
+      </div>
+      <div class="start-item" data-cmd="about">
+        <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="1" y="2" width="14" height="12" fill="#c0c0c0" stroke="#000"/>
+          <rect x="1" y="2" width="14" height="3" fill="#000080"/>
+          <rect x="2" y="6" width="12" height="7" fill="#008080"/>
+        </svg>
+        <span>About Wordfall…</span>
+      </div>
+      <div class="start-sep"></div>
+      <div class="start-item" data-cmd="shutdown">
+        <svg class="title-icon" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="2" y="2" width="12" height="9" fill="#c0c0c0" stroke="#000"/>
+          <rect x="3" y="3" width="10" height="7" fill="#000080"/>
+          <rect x="6" y="12" width="4" height="2" fill="#808080"/>
+        </svg>
+        <span>Shut Down…</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="words.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

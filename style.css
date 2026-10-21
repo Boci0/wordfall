@@ -1,0 +1,815 @@
+/* Wordfall for Windows — Windows 95-era application skin.
+ * C 1995 vibes: 16-colour palette, 2px bevels, Tahoma, no rounded corners,
+ * no gradients, no blur. Everything is drawn with borders and hard shadows.
+ */
+
+:root {
+  --face: #c0c0c0;
+  --light: #dfdfdf;
+  --white: #ffffff;
+  --shadow: #808080;
+  --dark: #000000;
+  --navy: #000080;
+  --teal: #008080;
+  --ink: #000000;
+  --disabled: #808080;
+  --desktop: #008080;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--desktop);
+}
+
+body {
+  font-family: "Microsoft Sans Serif", Tahoma, Arial, sans-serif;
+  font-size: 11px;
+  color: var(--ink);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+svg { display: block; }
+u { text-underline-offset: 1px; }
+
+/* ── Desktop ─────────────────────────────────────────────────────────────── */
+.desktop {
+  position: fixed;
+  inset: 0;
+  background: var(--desktop);
+  overflow: hidden;
+}
+
+.desktop-icons {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 1;
+}
+
+.desktop-icon {
+  width: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+}
+
+.desktop-icon .icon32 {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.desktop-label {
+  color: #fff;
+  font-size: 11px;
+  line-height: 13px;
+  text-align: center;
+  padding: 0 2px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.desktop-icon.selected .desktop-label {
+  background: var(--navy);
+  outline: 1px dotted #fff;
+  outline-offset: -1px;
+}
+
+/* ── Application window ──────────────────────────────────────────────────── */
+.window {
+  background: var(--face);
+  border: 1px solid var(--dark);
+  box-shadow: inset 1px 1px var(--light), inset -1px -1px var(--shadow);
+  padding: 3px;
+}
+
+.app {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1100px, calc(100vw - 200px));
+  height: min(772px, calc(100vh - 92px));
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.app.dragging { cursor: default; }
+
+.app.minimized,
+.app.gone { display: none; }
+
+.app.maximized {
+  left: 0 !important;
+  top: 0 !important;
+  width: 100vw !important;
+  height: calc(100vh - 30px) !important;
+  transform: none !important;
+}
+
+/* ── Title bar ───────────────────────────────────────────────────────────── */
+.title-bar {
+  height: 18px;
+  flex: 0 0 18px;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.title-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  image-rendering: pixelated;
+}
+
+.title-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-buttons { display: flex; gap: 2px; }
+
+.title-btn {
+  width: 16px;
+  height: 14px;
+  background: var(--face);
+  box-shadow:
+    inset -1px -1px var(--dark),
+    inset 1px 1px var(--white),
+    inset -2px -2px var(--shadow),
+    inset 2px 2px var(--light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.title-btn:active {
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+}
+
+.title-btn.min i { width: 6px; height: 2px; background: var(--dark); margin-top: 7px; }
+.title-btn.max i { width: 9px; height: 8px; border: 1px solid var(--dark); border-top-width: 2px; }
+.title-btn.close i { width: 10px; height: 10px; position: relative; }
+.title-btn.close i::before,
+.title-btn.close i::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: -1px;
+  width: 2px;
+  height: 12px;
+  background: var(--dark);
+  transform: rotate(45deg);
+}
+.title-btn.close i::after { transform: rotate(-45deg); }
+
+/* ── Menu bar ────────────────────────────────────────────────────────────── */
+.menu-bar {
+  display: flex;
+  align-items: stretch;
+  height: 20px;
+  flex: 0 0 20px;
+  position: relative;
+  z-index: 30;
+  padding: 1px 0;
+}
+
+.menu-item { position: relative; }
+
+.menu-label {
+  display: block;
+  padding: 3px 8px 2px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.menu-item.open > .menu-label,
+.menu-item:hover > .menu-label {
+  background: var(--navy);
+  color: #fff;
+}
+
+.dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 176px;
+  background: var(--face);
+  border: 1px solid var(--dark);
+  box-shadow:
+    inset 1px 1px var(--light),
+    inset -1px -1px var(--shadow),
+    3px 3px 0 rgba(0, 0, 0, 0.24);
+  padding: 2px;
+  z-index: 40;
+}
+
+.menu-item.open .dropdown { display: block; }
+
+.drop-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+  padding: 3px 18px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.drop-item:hover { background: var(--navy); color: #fff; }
+
+.drop-item.disabled {
+  color: var(--disabled);
+  text-shadow: 1px 1px 0 #fff;
+}
+.drop-item.disabled:hover { background: transparent; color: var(--disabled); }
+
+.shortcut { opacity: 0.75; }
+
+.drop-sep {
+  height: 2px;
+  border-top: 1px solid var(--shadow);
+  border-bottom: 1px solid var(--white);
+  margin: 3px 2px;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.toolbar {
+  height: 28px;
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-top: 1px solid var(--white);
+  border-bottom: 1px solid var(--shadow);
+}
+
+.tool-btn {
+  width: 23px;
+  height: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: var(--face);
+  box-shadow:
+    inset -1px -1px var(--dark),
+    inset 1px 1px var(--white),
+    inset -2px -2px var(--shadow),
+    inset 2px 2px var(--light);
+}
+
+.tool-btn:active,
+.tool-btn.open {
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+}
+
+.tool-btn svg { width: 16px; height: 16px; }
+.tool-btn.off svg { opacity: 0.35; }
+
+.tool-sep {
+  width: 2px;
+  height: 19px;
+  margin: 0 3px;
+  border-left: 1px solid var(--shadow);
+  border-right: 1px solid var(--white);
+}
+
+.tool-field {
+  flex: 1;
+  min-width: 0;
+  height: 19px;
+  margin-left: 3px;
+  padding: 2px 5px;
+  background: var(--face);
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+
+/* ── Playfield ───────────────────────────────────────────────────────────── */
+.client {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 2px 1px 1px;
+  background: #000020;
+  overflow: hidden;
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+}
+
+#game {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000020;
+}
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+.status-bar {
+  display: flex;
+  gap: 2px;
+  height: 21px;
+  flex: 0 0 21px;
+  padding: 1px 1px 0;
+}
+
+.status-panel {
+  background: var(--face);
+  padding: 3px 5px 2px;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+}
+
+.status-panel.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Modal dialogs ───────────────────────────────────────────────────────── */
+.modal-layer {
+  position: absolute;
+  inset: 0;
+  display: none;
+  z-index: 5;
+}
+.modal-layer.open { display: block; }
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dialog {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--face);
+  border: 1px solid var(--dark);
+  box-shadow:
+    inset 1px 1px var(--light),
+    inset -1px -1px var(--shadow),
+    5px 5px 0 rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  z-index: 6;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  overflow: auto;
+}
+
+.dialog.show {
+  display: block;
+  animation: dialog-in 0.12s steps(2, end) both;
+}
+
+.dialog-title {
+  height: 18px;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 3px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.dialog-body {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dialog-body p { margin: 0 0 6px; }
+.dialog-body p:last-child { margin-bottom: 0; }
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 6px 12px 10px;
+}
+
+.btn {
+  min-width: 75px;
+  height: 23px;
+  padding: 1px 8px 0;
+  background: var(--face);
+  border: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  box-shadow:
+    inset -1px -1px var(--dark),
+    inset 1px 1px var(--white),
+    inset -2px -2px var(--shadow),
+    inset 2px 2px var(--light);
+  position: relative;
+}
+
+.btn:active {
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+  padding: 2px 7px 0 9px;
+}
+
+.btn.default { outline: 1px solid var(--dark); outline-offset: 1px; }
+
+.btn:focus-visible { outline: 1px dotted var(--dark); outline-offset: -4px; }
+
+.btn[disabled] {
+  color: var(--disabled);
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* Welcome */
+.dlg-welcome { width: 430px; }
+
+.welcome-body {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 14px 6px;
+}
+
+.welcome-icon { width: 32px; height: 32px; flex: 0 0 32px; }
+
+.welcome-head { font-weight: 700; font-size: 12px; margin-bottom: 5px; }
+
+.welcome-best { margin-top: 8px; color: var(--navy); font-weight: 700; }
+
+/* Draft */
+.dlg-draft { width: 660px; }
+
+.draft-meta { margin: 0 0 8px; }
+
+.draft-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.draft-card {
+  position: relative;
+  min-height: 150px;
+  padding: 8px;
+  background: var(--face);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: inset 1px 1px var(--white), inset -1px -1px var(--shadow);
+}
+
+.draft-card:hover {
+  outline: 1px dotted var(--dark);
+  outline-offset: -3px;
+}
+
+.draft-card .badge {
+  align-self: flex-start;
+  padding: 1px 4px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.draft-card.boon .badge { background: #008000; }
+.draft-card.gambit .badge { background: #808000; }
+.draft-card.hex .badge { background: #800080; }
+
+.draft-card .rare {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: #800000;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.draft-card .draft-name {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  padding-right: 24px;
+}
+
+.draft-card .draft-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.draft-card .draft-key {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: 10px;
+  color: #404040;
+}
+
+.draft-card:nth-child(1) { animation: card-rise 0.24s steps(4, end) 0s both; }
+.draft-card:nth-child(2) { animation: card-rise 0.24s steps(4, end) 0.06s both; }
+.draft-card:nth-child(3) { animation: card-rise 0.24s steps(4, end) 0.12s both; }
+
+.draft-held {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #404040;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-note {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #404040;
+}
+
+/* Message dialogs */
+.dlg-message { width: 360px; }
+
+.big-score {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+
+.dawn-score { color: #806000; }
+
+.stats { font-size: 11px; color: #000; margin-bottom: 4px; }
+
+.held-line {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #404040;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Controls */
+.dlg-help { width: 470px; }
+
+.key-table { border-collapse: collapse; margin: 0 0 6px; }
+.key-table td { padding: 2px 10px 2px 0; vertical-align: top; }
+.key-table .key { font-weight: 700; color: var(--navy); white-space: nowrap; }
+
+.fine-print { font-size: 10px; color: #404040; }
+
+/* About */
+.dlg-help .about-body {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px;
+}
+
+.about-icon { width: 32px; height: 32px; flex: 0 0 32px; }
+.about-head { font-weight: 700; font-size: 13px; }
+.about-ver { color: #404040; margin-bottom: 6px; }
+
+/* Quit */
+.dlg-quit { width: 330px; }
+.quit-body { display: flex; gap: 14px; align-items: flex-start; padding: 14px 14px 6px; }
+.quit-icon { width: 32px; height: 32px; flex: 0 0 32px; }
+.quit-line { margin: 0 0 4px; }
+
+/* ── Taskbar ─────────────────────────────────────────────────────────────── */
+.taskbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  background: var(--face);
+  border-top: 1px solid var(--light);
+  box-shadow: 0 -1px 0 var(--shadow);
+  z-index: 50;
+}
+
+.start-btn {
+  height: 23px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 0 3px;
+  font-weight: 700;
+  background: var(--face);
+  box-shadow:
+    inset -1px -1px var(--dark),
+    inset 1px 1px var(--white),
+    inset -2px -2px var(--shadow),
+    inset 2px 2px var(--light);
+}
+
+.start-btn:active,
+.start-btn.open {
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+  padding: 2px 6px 0 4px;
+}
+
+.start-btn .flag { width: 16px; height: 16px; }
+
+.task-divider {
+  width: 2px;
+  height: 21px;
+  border-left: 1px solid var(--shadow);
+  border-right: 1px solid var(--white);
+}
+
+.task-btn {
+  height: 23px;
+  max-width: 260px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 0 4px;
+  background: var(--face);
+  box-shadow:
+    inset 1px 1px var(--dark),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--shadow),
+    inset -2px -2px var(--light);
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-btn.hidden { display: none; }
+
+/* When the app window is minimised the taskbar button pops back out (raised). */
+.task-btn.raised {
+  box-shadow:
+    inset -1px -1px var(--dark),
+    inset 1px 1px var(--white),
+    inset -2px -2px var(--shadow),
+    inset 2px 2px var(--light);
+}
+
+.taskbar-spacer { flex: 1; }
+
+.clock {
+  height: 21px;
+  padding: 3px 8px 0;
+  font-size: 11px;
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+}
+
+/* ── Start menu ──────────────────────────────────────────────────────────── */
+.start-menu {
+  position: fixed;
+  left: 2px;
+  bottom: 30px;
+  width: 198px;
+  display: none;
+  background: var(--face);
+  border: 1px solid var(--dark);
+  box-shadow:
+    inset 1px 1px var(--light),
+    inset -1px -1px var(--shadow),
+    4px 4px 0 rgba(0, 0, 0, 0.25);
+  padding: 2px;
+  z-index: 60;
+}
+
+.start-menu.open { display: flex; }
+
+.start-banner {
+  width: 22px;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.start-items { flex: 1; display: flex; flex-direction: column; }
+
+.start-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.start-item:hover { background: var(--navy); color: #fff; }
+
+.start-sep {
+  height: 2px;
+  border-top: 1px solid var(--shadow);
+  border-bottom: 1px solid var(--white);
+  margin: 3px 2px;
+}
+
+/* A modal dialog turns the window frame into an inert backdrop, Win95-style. */
+.app.modal-open .menu-bar,
+.app.modal-open .toolbar {
+  pointer-events: none;
+}
+
+.app.modal-open .menu-label {
+  color: var(--disabled);
+}
+
+/* ── Native (WebView2) embedded mode ────────────────────────────────────── */
+body.embedded { background: #000; }
+
+body.embedded .desktop { padding: 0; background: #000; }
+
+body.embedded .desktop-icons,
+body.embedded .taskbar {
+  display: none !important;
+}
+
+body.embedded .app {
+  left: 0 !important;
+  top: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  transform: none !important;
+  border-width: 0 !important;
+}
+
+body.embedded .app.maximized {
+  height: 100vh !important;
+}
+
+/* ── Animation ───────────────────────────────────────────────────────────── */
+@keyframes dialog-in {
+  from { opacity: 0.3; transform: translate(-50%, -52%); }
+  to   { opacity: 1;   transform: translate(-50%, -50%); }
+}
+
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

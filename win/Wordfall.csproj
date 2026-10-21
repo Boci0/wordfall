@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <RootNamespace>Wordfall</RootNamespace>
+    <AssemblyName>Wordfall</AssemblyName>
+    <AssemblyTitle>Wordfall</AssemblyTitle>
+    <Product>Wordfall</Product>
+    <Description>Wordfall - native Windows shell (WinForms + WebView2)</Description>
+    <Version>1.0.0</Version>
+
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <ApplicationIcon>wordfall.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Framework-dependent publish: no bundled .NET runtime needed on this machine.
+         Single-file publishing was tried first, but the bundled WebView2 host fails to
+         initialize (COMException 0x800700AA), so this is a normal folder publish:
+         Wordfall.exe plus WebView2Loader.dll and the WebView2 managed assemblies. -->
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <RollForward>LatestMajor</RollForward>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <!-- The game files are embedded at build time. Wildcard-style relative paths mean a
+       plain rebuild always picks up whatever the Lead last wrote to the web files. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\index.html" LogicalName="Wordfall.web.index.html" />
+    <EmbeddedResource Include="..\style.css" LogicalName="Wordfall.web.style.css" />
+    <EmbeddedResource Include="..\words.js" LogicalName="Wordfall.web.words.js" />
+    <EmbeddedResource Include="..\game.js" LogicalName="Wordfall.web.game.js" />
+  </ItemGroup>
+
+</Project>
