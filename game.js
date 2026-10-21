@@ -1,4 +1,4 @@
-/* Wordfall — Read. Commit. Survive.
+/* Wordfall - Read. Commit. Survive.
  *
  * Rule that defines the game: you may only type the word that is currently
  * closest to the ground. Every other word is inert until it becomes a target.
@@ -22,7 +22,7 @@
     groundPad: 96,            // height of the abstract signal strip at the bottom
     charH: 30,                // vertical footprint of one word
 
-    // difficulty ramp — every one of these reads `pressure`, not raw clears.
+    // difficulty ramp - every one of these reads `pressure`, not raw clears.
     // The ramp is deliberately spread across the whole run: the old curve hit the
     // spawn floor and the first 4+ letter band on the same wave (wave 4), then
     // stacked two more length jumps and the speed cap by wave 6.
@@ -35,7 +35,7 @@
     maxWords: 6,              // smaller queue, because words cross twice as fast
 
     // word-length ramp: [pressureThreshold, [shortest, longest]] from the top down.
-    // Each step moves at most one bound, roughly one notch every 1–2 waves.
+    // Each step moves at most one bound, roughly one notch every 1-2 waves.
     wordRangeSteps: [
       [10, [3, 5]],
       [22, [3, 6]],
@@ -81,7 +81,7 @@
     fakeSpeedMult: 4.5,
   };
 
-  // Relay 12: one story beat after each cleared wave. These are flavor only —
+  // Relay 12: one story beat after each cleared wave. These are flavor only  - 
   // no rule reads them. The endless line replaces the table after wave 12.
   const RELAY_LOG = [
     'The channel opens. Something on the other end is typing back.',
@@ -1374,7 +1374,7 @@
     if (word.harmless) return;                           // Split's free word costs no life
 
     // Lifeline: the first word that reaches the line is destroyed instead of
-    // costing a Life. Combo is kept — it is a rare, once-per-run save.
+    // costing a Life. Combo is kept - it is a rare, once-per-run save.
     if (has('lifeline') && !state.lifelineUsed) {
       state.lifelineUsed = true;
       if (!state.simulating) {
@@ -1565,7 +1565,7 @@
     }
   }
 
-  // ─── Playfield rendering — 16 colours, dithered, 1995 ────────────────────
+  // ─── Playfield rendering - 16 colours, dithered, 1995 ────────────────────
   const WORD_FONT = 'bold 24px "Lucida Console", "Courier New", monospace';
   const PIXEL_FONT = '9px "Microsoft Sans Serif", Tahoma, sans-serif';
   const PARTICLE_COLORS = ['#ffff00', '#ffffff', '#00a000', '#c0c0c0', '#ff0000'];
@@ -2174,7 +2174,7 @@
     }
     body.classList.toggle('fx-combo-hot', combo >= 5);
     body.classList.toggle('fx-danger', danger > 0.55);
-    // "Low life" means one life AND a word about to cross — the last life is
+    // "Low life" means one life AND a word about to cross - the last life is
     // tense, not permanently red from the first frame.
     body.classList.toggle('fx-low-life', state.lives <= 1 && danger > 0.25);
     body.classList.toggle('fx-milestone', state.milestoneT > 0);
@@ -2318,7 +2318,7 @@
     const logLine = state.endless || state.wave > RELAY_LOG.length
       ? ENDLESS_LOG
       : RELAY_LOG[Math.max(0, state.wave - 1)];
-    setText(ui.draft.log, `RELAY 12 \u2014 ${logLine}`);
+    setText(ui.draft.log, `RELAY 12: ${logLine}`);
     setText(ui.draft.held, 'Held: ' + heldCardsText());
     setText(
       ui.draft.note,
@@ -2360,7 +2360,7 @@
     setText(ui.records.runs, String(records.runs));
     setText(ui.records.dawns, String(records.dawns));
     setText(ui.records.words, String(records.words));
-    setText(ui.records.fastest, records.fastestDawnSec ? fmtTime(records.fastestDawnSec) : '\u2014');
+    setText(ui.records.fastest, records.fastestDawnSec ? fmtTime(records.fastestDawnSec) : '-');
   }
 
   function populatePause() {
@@ -2395,8 +2395,8 @@
       menu: 'Ready',
       playing: 'Playing' + (state.combo > 0 ? ` · combo x${comboMultiplier().toFixed(2)}` : ''),
       paused: 'Paused',
-      draft: 'Draft — choose a card',
-      dawn: 'Dawn — run won',
+      draft: 'Draft - choose a card',
+      dawn: 'Dawn - run won',
       gameover: 'Signal lost',
     }[state.phase] || 'Ready';
     setText(ui.status.main, phaseText);
@@ -2421,7 +2421,7 @@
     } else if (state.phase === 'draft') label = 'Draft';
     else if (state.phase === 'dawn') label = 'Dawn';
     else if (state.phase === 'gameover') label = 'Signal Lost';
-    const title = `Wordfall \u2014 ${label}`;
+    const title = `Wordfall - ${label}`;
     setText(ui.titleText, title);
     setText(ui.taskText, title);
   }
@@ -2591,6 +2591,11 @@
       case 'maximize': toggleMaximize(); break;
       case 'controls': openOverlay('controls'); break;
       case 'about': openOverlay('about'); break;
+      // The desktop shell owns the updater; in a browser just point at the releases.
+      case 'update':
+        if (nativeHost) hostMessage('check-update');
+        else window.open('https://github.com/Boci0/wordfall/releases/latest', '_blank', 'noopener');
+        break;
       case 'shutdown': onClose(); break;
       default: break;
     }

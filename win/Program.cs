@@ -28,6 +28,8 @@ internal static class Program
         bool smoke = HasFlag(args, "--smoke");
         bool smokeVisible = HasFlag(args, "--smoke-visible");
         bool selfTest = HasFlag(args, "--selftest") || HasFlag(args, "--version");
+        bool updateCheck = HasFlag(args, "--check-update");
+        string? updateSelfTestDir = ValueOf(args, "--update-selftest=");
 
         string? smokeOut = ValueOf(args, "--smoke-out=");
         string? selfTestOut = ValueOf(args, "--selftest-out=");
@@ -37,9 +39,18 @@ internal static class Program
 
         smokeOut ??= Path.Combine(AppContext.BaseDirectory, "smoke-result.json");
 
-        if (smoke || selfTest) AttachConsoleIfPossible();
+        if (smoke || selfTest || updateCheck || updateSelfTestDir is not null) AttachConsoleIfPossible();
 
         if (selfTest) Environment.Exit(RunSelfTest(selfTestOut));
+        if (updateCheck) Environment.Exit(RunUpdateCheck(args));
+        if (updateSelfTestDir is not null) Environment.Exit(RunUpdateSelfTest(args, updateSelfTestDir));
+        string? updaterScriptOut = ValueOf(args, "--write-updater-script=");
+        if (updaterScriptOut is not null)
+        {
+            File.WriteAllText(updaterScriptOut, Updater.InstallerScriptText);
+            Console.WriteLine("wordfall: updater install script written to " + Path.GetFullPath(updaterScriptOut));
+            Environment.Exit(0);
+        }
         if (HasFlag(args, "--instance-check")) Environment.Exit(RunInstanceCheck(args));
 
         if (smoke)
@@ -213,6 +224,7 @@ internal static class Program
         {
             ["ok"] = ok,
             ["mode"] = "selftest",
+            ["appVersion"] = AppVersion.Current,
             ["exe"] = Application.ExecutablePath,
             ["baseDir"] = AppContext.BaseDirectory,
             ["dotnetVersion"] = Environment.Version.ToString(),
@@ -229,6 +241,107 @@ internal static class Program
         Console.WriteLine("Wordfall selftest");
         Console.WriteLine(json);
         WriteResult(outPath ?? Path.Combine(AppContext.BaseDirectory, "selftest-result.json"), json);
+        return ok ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Diagnostic (--check-update): queries the GitHub release feed and prints the result as
+    /// JSON. Exits 0 when the check itself succeeded (update available or not), 1 on error.
+    /// Optional: --current-version=X overrides the installed version for deterministic tests,
+    /// --update-out=path writes the JSON next to a log.
+    /// </summary>
+    private static int RunUpdateCheck(string[] args)
+    {
+        string? currentOverride = ValueOf(args, "--current-version=");
+        UpdateCheckResult result = Updater.CheckAsync(currentOverride).GetAwaiter().GetResult();
+        string json = result.ToJson();
+        Console.WriteLine("Wordfall update check");
+        Console.WriteLine(json);
+
+        string? outPath = ValueOf(args, "--update-out=");
+        if (!string.IsNullOrWhiteSpace(outPath)) WriteResult(outPath!, json);
+        return result.Ok ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Diagnostic (--update-selftest=DIR): performs the full updater download path — check,
+    /// download the latest release zip, verify its SHA-256, extract and validate Wordfall.exe —
+    /// then cleans the staging folder (unless --keep-staged) and reports JSON. This never
+    /// replaces the running install; the app's end-to-end install path is exercised by
+    /// UpdateProgressForm + Updater.LaunchInstallerAndExit.
+    /// </summary>
+    private static int RunUpdateSelfTest(string[] args, string directory)
+    {
+        string? currentOverride = ValueOf(args, "--current-version=");
+        bool keepStaged = HasFlag(args, "--keep-staged");
+        UpdateCheckResult check = Updater.CheckAsync(currentOverride).GetAwaiter().GetResult();
+
+        string? staged = null;
+        string? error = check.Ok ? null : check.Error;
+        int files = 0;
+        bool exeExists = false;
+        bool ok = false;
+        string? cleanupError = null;
+
+        try
+        {
+            if (!check.Ok) throw new InvalidOperationException(check.Error ?? "update check failed.");
+            if (!check.Available)
+                throw new InvalidOperationException(
+                    $"no update available: current {check.Current}, latest {check.Latest ?? "unknown"}.");
+            Directory.CreateDirectory(directory);
+            staged = Updater.DownloadAndStageAsync(check).GetAwaiter().GetResult();
+            exeExists = File.Exists(Path.Combine(staged, "Wordfall.exe"));
+            files = Directory.GetFiles(staged, "*", SearchOption.AllDirectories).Length;
+            ok = exeExists && files > 0;
+            if (!ok) error = "staged update did not contain Wordfall.exe.";
+        }
+        catch (Exception ex)
+        {
+            error = ex.GetType().Name + ": " + ex.Message;
+        }
+        finally
+        {
+            if (staged is not null && !keepStaged)
+            {
+                try
+                {
+                    string? root = Directory.GetParent(staged)?.FullName;
+                    if (root is not null && Directory.Exists(root)) Directory.Delete(root, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    cleanupError = ex.GetType().Name + ": " + ex.Message;
+                }
+            }
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["ok"] = ok,
+            ["mode"] = "update-selftest",
+            ["appVersion"] = AppVersion.Current,
+            ["current"] = check.Current,
+            ["latest"] = check.Latest,
+            ["available"] = check.Available,
+            ["tag"] = check.Tag,
+            ["assetName"] = check.AssetName,
+            ["assetSize"] = check.AssetSize,
+            ["assetSha256Present"] = !string.IsNullOrWhiteSpace(check.AssetSha256),
+            ["staged"] = keepStaged ? staged : null,
+            ["stagedExe"] = exeExists,
+            ["stagedFiles"] = files,
+            ["cleanupError"] = cleanupError,
+            ["error"] = error,
+            ["timestamp"] = DateTimeOffset.Now.ToString("O"),
+        };
+
+        string json = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
+        Console.WriteLine("Wordfall update selftest");
+        Console.WriteLine(json);
+
+        string? outPath = ValueOf(args, "--update-out=");
+        WriteResult(outPath ?? Path.Combine(AppContext.BaseDirectory, "update-selftest-result.json"), json);
         return ok ? 0 : 1;
     }
 

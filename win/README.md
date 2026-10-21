@@ -66,6 +66,8 @@ after the web files change.
 | `Program.cs` | CLI parsing (`--smoke`, `--selftest`, `--browser-args`), single-instance mutex, console attach, selftest |
 | `MainForm.cs` | borderless window, WebView2 setup, in-memory origin, title-bar messages, maximize/restore sync |
 | `WebAssets.cs` | loads the four embedded files and maps request paths to bytes + Content-Type |
+| `Updater.cs` | in-app updater: GitHub release check, SHA-256-verified download, staged swap + relaunch helper, version parsing |
+| `UpdateProgressForm.cs` | small Win95-style download progress dialog used by the updater |
 | `SmokeRunner.cs` | `--smoke` verification, JSON result file, heartbeat log, independent watchdog thread |
 | `make-icon.ps1` | generates the Win95-style `wordfall.ico` (16/32/48/256) |
 | `build.ps1` | one-command build/publish (and optional smoke run) |
@@ -105,6 +107,27 @@ The page posts exactly these strings with `window.chrome.webview.postMessage(...
 | `min` | `WindowState = FormWindowState.Minimized` |
 | `max` | toggles `Normal` / `Maximized` |
 | `close` | `Close()` |
+| `check-update` | starts the in-app updater (Help → Check for Updates…) |
+
+### In-app updater
+
+The native shell checks `https://api.github.com/repos/Boci0/wordfall/releases/latest`
+about 6 s after launch and on demand. A newer tag prompts Yes/No; on Yes it downloads the
+win64 zip, verifies GitHub's published SHA-256 digest, extracts it under
+`%LOCALAPPDATA%\Wordfall\updates\<tag>\staged`, and hands the swap to a detached PowerShell
+helper (`%TEMP%\Wordfall-update-<pid>.ps1`). The helper waits for Wordfall to exit, retries
+copying the staged files over the install folder, cleans up, and restarts `Wordfall.exe`.
+Records/settings/profile live in `%LOCALAPPDATA%\Wordfall`, outside the install folder, so
+they survive. A non-writable install folder falls back to opening the release page. The
+helper accepts `-NoStart` for rehearsal against a scratch folder, and every step logs to
+`%LOCALAPPDATA%\Wordfall\updates\last-update.log`.
+
+```powershell
+# updater diagnostics (no install is touched)
+dist\Wordfall-win64\Wordfall.exe --check-update --current-version=1.0.0 --update-out=check.json
+dist\Wordfall-win64\Wordfall.exe --update-selftest=%TEMP%\wf-update --current-version=1.0.0
+dist\Wordfall-win64\Wordfall.exe --write-updater-script=%TEMP%\wf-install.ps1
+```
 
 After a max/restore toggle (and on initial page load) the host posts back a **JSON
 string** so the page can update its Maximize glyph/menu item:

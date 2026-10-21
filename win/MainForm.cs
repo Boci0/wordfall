@@ -49,6 +49,8 @@ internal sealed class MainForm : Form
     private Exception? _pendingInitException;
     private bool _lastPostedMaximized;
     private string? _lastNavigationError;
+    private bool _updateCheckRunning;
+    private bool _updateInstalling;
 
     public MainForm(bool smoke, string smokeOutPath, string browserArguments, bool smokeVisible, string? profileDirOverride)
     {
@@ -182,6 +184,124 @@ internal sealed class MainForm : Form
         SmokeRunner.Heartbeat(_smokeOutPath, "navigating");
 
         if (_smoke) await _smokeRunner!.RunAsync();
+        else _ = AutoCheckForUpdatesAsync();
+    }
+
+    // -- In-app updater --------------------------------------------------------------
+
+    private async Task AutoCheckForUpdatesAsync()
+    {
+        try { await Task.Delay(TimeSpan.FromSeconds(6)); } catch (Exception) { return; }
+        if (IsDisposed || _updateInstalling || _smoke || !Visible) return;
+        await CheckForUpdatesAsync(interactive: false);
+    }
+
+    private async Task CheckForUpdatesAsync(bool interactive)
+    {
+        if (_updateCheckRunning || _updateInstalling) return;
+        _updateCheckRunning = true;
+        try
+        {
+            UpdateCheckResult result = await Updater.CheckAsync();
+            if (IsDisposed || _updateInstalling) return;
+
+            if (!result.Ok)
+            {
+                if (interactive)
+                {
+                    MessageBox.Show(
+                        this,
+                        "Wordfall could not check for updates.\r\n\r\n" + (result.Error ?? "Unknown error") +
+                        "\r\n\r\nYou can check manually at " + Updater.ReleasesPage,
+                        "Wordfall Update",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+                return;
+            }
+
+            if (!result.Available)
+            {
+                if (interactive)
+                {
+                    MessageBox.Show(
+                        this,
+                        $"Wordfall {result.Current} is up to date.",
+                        "Wordfall Update",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                return;
+            }
+
+            string assetSize = result.AssetSize > 0
+                ? $" ({result.AssetSize / 1024.0 / 1024.0:0.0} MB)"
+                : string.Empty;
+            string prompt =
+                $"Wordfall {result.Latest} is available — you have {result.Current}.\r\n\r\n" +
+                $"Download and install it now{assetSize}? Wordfall will restart when it is ready.";
+            if (MessageBox.Show(this, prompt, "Wordfall Update", MessageBoxButtons.YesNo, MessageBoxIcon.Information)
+                != DialogResult.Yes)
+            {
+                return;
+            }
+
+            if (!Updater.CanSelfUpdate(out string? reason))
+            {
+                string detail = string.IsNullOrWhiteSpace(reason) ? string.Empty : "\r\n\r\n" + reason;
+                if (MessageBox.Show(
+                        this,
+                        "This copy of Wordfall is installed in a folder it cannot update itself." + detail +
+                        "\r\n\r\nOpen the release page instead?",
+                        "Wordfall Update",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning) == DialogResult.Yes)
+                {
+                    Updater.OpenReleasePage(result.ReleaseUrl);
+                }
+                return;
+            }
+
+            string staged;
+            using (var progress = new UpdateProgressForm(result.Latest ?? result.Tag ?? "update"))
+            {
+                progress.Show(this);
+                try
+                {
+                    staged = await Updater.DownloadAndStageAsync(result, new Progress<int>(progress.SetProgress));
+                }
+                catch (Exception ex)
+                {
+                    progress.Close();
+                    MessageBox.Show(
+                        this,
+                        "The update could not be downloaded and installed.\r\n\r\n" + ex.Message +
+                        "\r\n\r\nYou can download it manually: " + result.ReleaseUrl,
+                        "Wordfall Update",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+                progress.Close();
+            }
+
+            MessageBox.Show(
+                this,
+                $"Wordfall {result.Latest} is downloaded and verified.\r\n\r\n" +
+                "Wordfall will close now and restart with the new version. Your records and settings are kept.",
+                "Wordfall Update",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            _updateInstalling = true;
+            Updater.LaunchInstallerAndExit(staged);
+            Close();
+            Application.Exit();
+        }
+        finally
+        {
+            _updateCheckRunning = false;
+        }
     }
 
     /// <summary>
@@ -440,6 +560,9 @@ internal sealed class MainForm : Form
                 break;
             case "close":
                 Close();
+                break;
+            case "check-update":
+                _ = CheckForUpdatesAsync(interactive: true);
                 break;
         }
     }

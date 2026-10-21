@@ -2,11 +2,12 @@
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1–M7 implemented**, shipped as v1.2, presented as a Windows 95-era desktop
+Status: **M1-M7 implemented**, shipped as v1.3, presented as a Windows 95-era desktop
 application (browser and native Windows build), plus the Relay 12 background and curve
-smoothing in §11 and the M7 impact/draft-balance pass in §12. M5 numbers, tuning notes and
-deviations are in §9; the M6 additions and their measured numbers are in §10; M7 is in §12,
-with the measured card-power evidence in [BALANCE-LAB.md](BALANCE-LAB.md).
+smoothing in §11, the M7 impact/draft-balance pass in §12, and the native in-app updater in
+§13. M5 numbers, tuning notes and deviations are in §9; the M6 additions and their measured
+numbers are in §10; M7 is in §12, with the measured card-power evidence in
+[BALANCE-LAB.md](BALANCE-LAB.md).
 
 ## 1. Pillar
 
@@ -19,10 +20,10 @@ Every card bends exactly one of three things:
 
 If a proposed card doesn't bend one of these, cut it.
 
-## 1.1 Setting — Relay 12 (current build)
+## 1.1 Setting - Relay 12 (current build)
 
 Relay 12, 03:00. The city's last long-wave station is still on the air. After midnight the
-dead channel starts dropping words — fragments of a broadcast that was never sent. The
+dead channel starts dropping words - fragments of a broadcast that was never sent. The
 player is the night operator: type each fragment before it reaches the line, patch the
 receiver when a wave ends, and hold the line until Dawn. "Signal Lost" is the relay going
 dark.
@@ -30,7 +31,7 @@ dark.
 The fiction is carried by:
 - the **Welcome** and **About** dialogs (setting + what Boons, Gambits and Hexes are in
   diegetic terms);
-- a one-line **relay log** in every draft (`RELAY 12 — …`), one beat per cleared wave;
+- a one-line **relay log** in every draft (`RELAY 12 - …`), one beat per cleared wave;
 - an **abstract signal horizon** in the playfield: irregular vertical bars and spectrum
   clusters, no buildings, windows or mast. This is the only visual change; there is no
   new screen and no new asset.
@@ -60,7 +61,7 @@ flowchart LR
 ### 2.1 Pause, records, seeds and run stats (M6)
 
 - **Pause is a phase** (`paused`). `Esc` while playing pauses; `Esc` or `Enter` resumes, and
-  Game → Pause/Resume is the mouse path. Printable letters always type — a typing game
+  Game → Pause/Resume is the mouse path. Printable letters always type - a typing game
   cannot spend a letter on a hotkey. The board and the *playing-time* clock freeze while
   paused; the pause dialog shows `Seed N · MM:SS played`. Minimize auto-pauses, and restore
   resumes only that minimize-induced pause, never a pause the player asked for.
@@ -92,7 +93,7 @@ heatMult  = 1 + 0.25 x heat                // heat = number of Hexes held (+ tie
 - Combo resets on a wrong key or a word hitting the line. Word progress is kept after a wrong key (M1 rule, revisit in M5).
 - M7 economies: Greed ×1.4 (tier II ×1.7), Longshot ×2 on 7+ letter words, Drought ×0.9
   (tier II ×0.85) in exchange for slower spawns, Bargain ×2 with Skip paying nothing.
-  Close-call clears and combo milestones are presentation only — they never change score.
+  Close-call clears and combo milestones are presentation only - they never change score.
 
 ## 4. Mechanical primitives
 
@@ -147,7 +148,7 @@ Cards may only use these. If a card needs something new, add it here first.
 | **Tunnel** | Hex | common | Only the next 3 letters of the target (in typing order) are visible | Next 2 |
 | **Ghost** | Hex | common | Each cleared word leaves an inert echo in place for 3 s | none |
 | **Decoy** | Hex | rare | 1 in 8 spawns is a misspelled fake that drops 4.5× faster. While a fake is the lowest word, every key counts as a mistake. Fakes fall through the line harmlessly | 1 in 5 |
-| **Split** | Hex | common | Every 5th spawn also drops a free word. It is a real 3–5 letter word: it scores and counts toward the wave, blocks the words above it while it falls, and costs no life at the line. It spawns even when the queue is full (the Hex's cost) | Every 3rd spawn |
+| **Split** | Hex | common | Every 5th spawn also drops a free word. It is a real 3-5 letter word: it scores and counts toward the wave, blocks the words above it while it falls, and costs no life at the line. It spawns even when the queue is full (the Hex's cost) | Every 3rd spawn |
 | **Second Draft** | Hex | rare | +1 reroll for the run | none |
 
 **M6 promoted Split** as the fifth Hex and 13th card. The free word carries
@@ -190,7 +191,7 @@ rare pool).
 | Any maxed card | the player has not already reached its `maxTier` |
 
 The Hex rule is generic: it reads the number of Hex cards in `CARD_LIST` (exported as
-`window.__wordfall.hexTotal`), so it stays correct as the pool grows — M6 added Split and
+`window.__wordfall.hexTotal`), so it stays correct as the pool grows - M6 added Split and
 M7 added Second Draft, and the check moved from 4 to 6 without a hard-coded list. The
 sweeps in [BALANCE-LAB.md](BALANCE-LAB.md) show 0 dead drafts, 0 ineligible offers and no
 duplicate cards within a draft.
@@ -199,24 +200,25 @@ duplicate cards within a draft.
 
 | Decision | Status |
 | --- | --- |
-| Canvas, single page, no build step, monospace | **Superseded** — gameplay is still a canvas playfield, but the shell is a Windows 95-style DOM/CSS application (title bar, menus, status bar, dialogs). The web version still has no build step; the native Windows build (§9) adds a .NET shell. |
+| Canvas, single page, no build step, monospace | **Superseded** - gameplay is still a canvas playfield, but the shell is a Windows 95-style DOM/CSS application (title bar, menus, status bar, dialogs). The web version still has no build step; the native Windows build (§9) adds a .NET shell. |
 | No map, draft-only roguelite | Kept |
 | No backspace | Kept |
 | Wrong key keeps word progress | Kept. First thing to revisit in M5 |
 | Draft trigger = waves of 10 clears | **New** (resolves Q1) |
 | Combo carries through the draft | **New** (resolves Q2) |
-| Split goes to the backlog | **Resolved in M6** — promoted as the 13th card, Hex / common (§5.2) |
+| Split goes to the backlog | **Resolved in M6** - promoted as the 13th card, Hex / common (§5.2) |
 | Keyboard only, no touch | Kept (Q4 closed) |
 | Dawn win state at wave 12 | **New** |
 | Win95-era presentation, browser + native | **New** (§9) |
-| Pause is a real phase; Esc pauses, Esc/Enter resumes | **New (M6)** — no letter is spent on a hotkey; the run clock freezes (§2.1) |
-| Lifetime records in localStorage, per machine | **New (M6)** — `wordfall.records`; no accounts, no network (§2.1) |
-| Runs carry a visible seed and can be retried | **New (M6)** — seed on pause/game-over/Dawn; Retry Seed replays it (§2.1) |
-| Sound setting persists across launches | **New (M6)** — `wordfall.settings` (§2.1) |
-| Impact layer: capped FX pools + adaptive budget | **New (M7)** — presentation never mutates rules and is skipped in `sim()`; 60fps verified under load (§12) |
-| Effects quality toggle, persisted | **New (M7)** — View → Effects: Full/Light; `wordfall.settings.fx` (§12) |
-| 18-card pool with wave-scaled draft rarity | **New (M7)** — measured in BALANCE-LAB.md; acceptance cells unchanged (§5, §12) |
-| Skip is a real choice (score + shield), still +4 Pressure | **New (M7)** — `150 × wave` points and +1 temporary Shield (§5.1) |
+| Pause is a real phase; Esc pauses, Esc/Enter resumes | **New (M6)** - no letter is spent on a hotkey; the run clock freezes (§2.1) |
+| Lifetime records in localStorage, per machine | **New (M6)** - `wordfall.records`; no accounts, and records never leave the machine. The native build's update check is the only network request and only contacts the public GitHub release API (§13) |
+| Runs carry a visible seed and can be retried | **New (M6)** - seed on pause/game-over/Dawn; Retry Seed replays it (§2.1) |
+| Sound setting persists across launches | **New (M6)** - `wordfall.settings` (§2.1) |
+| Impact layer: capped FX pools + adaptive budget | **New (M7)** - presentation never mutates rules and is skipped in `sim()`; 60fps verified under load (§12) |
+| Effects quality toggle, persisted | **New (M7)** - View → Effects: Full/Light; `wordfall.settings.fx` (§12) |
+| 18-card pool with wave-scaled draft rarity | **New (M7)** - measured in BALANCE-LAB.md; acceptance cells unchanged (§5, §12) |
+| Native build updates itself from GitHub releases | **New (v1.3)** - user-confirmed download, SHA-256 verified, detached swap + relaunch; browser build just links the release page (§13) |
+| Skip is a real choice (score + shield), still +4 Pressure | **New (M7)** - `150 × wave` points and +1 temporary Shield (§5.1) |
 
 ## 7. Milestones (with acceptance criteria)
 
@@ -226,17 +228,18 @@ duplicate cards within a draft.
 | **M3 Card set** | Remaining 9 cards, primitives (Shield, Lock-on), eligibility filter, tier II | Smoke test per card through `__wordfall` (force a pick, assert the effect). No card offered while ineligible across 1000 seeded drafts | **Done** |
 | **M4 Feel** | Hit-pause on clear, particles, combo pitch rise, near-miss shake, danger-line audio, card rise animation | Manual playtest checklist. 60 fps held with 12 words + Ghost echoes | **Done** |
 | **M5 Tuning** | Headless bot at 40/60/80 WPM with random picks, plus a word pool of 400+ words | 60 WPM bot, no cards: dies at wave 5 to 7. 60 WPM with picks: reaches Dawn in 30 to 50% of runs. 80 WPM: over 70% | **Done** |
-| **M6 Pause + records + run identity + Split** | `paused` phase and dialog, lifetime Records, WPM/accuracy/run-time/seed stats on game-over and Dawn, Retry Seed, settings persistence, 13th card Split | Smoke test: pause freezes board and clock and resumes via Esc/Enter; records load and save once per finished run; `reset(seed)` is deterministic; the result dialogs carry WPM/accuracy/time/seed; Retry Seed replays the seed; Split spawns a real harmless 3–5 letter word on its cadence and is the fifth Hex. Bot: all M5 cells still pass at 400 seeds | **Done** |
-| **M7 Impact + draft balance + 18 cards** | Capped canvas effect layer (particles, glyph shards, rings, pop-ups, milestones, wave-clear beat, ambient motion, adaptive budget), per-word typing/clear impact, Effects Full/Light toggle, status combo panel + CSS FX overlay; 5 new cards, trap retune, wave-scaled rarity, cross-lane rare fallback, slot-2 lane diversity, Skip rework | Smoke test: effect pools fire on a clear, milestone and wave-clear beat, FX toggle + persistence + CSS hooks, full-board 60fps check; every card asserted; bot: 60 skip dies 100% median 7, 60 random Dawn 30–50%, 80 random > 70%; balance-lab spread and no dead drafts | **Done** |
+| **M6 Pause + records + run identity + Split** | `paused` phase and dialog, lifetime Records, WPM/accuracy/run-time/seed stats on game-over and Dawn, Retry Seed, settings persistence, 13th card Split | Smoke test: pause freezes board and clock and resumes via Esc/Enter; records load and save once per finished run; `reset(seed)` is deterministic; the result dialogs carry WPM/accuracy/time/seed; Retry Seed replays the seed; Split spawns a real harmless 3-5 letter word on its cadence and is the fifth Hex. Bot: all M5 cells still pass at 400 seeds | **Done** |
+| **M7 Impact + draft balance + 18 cards** | Capped canvas effect layer (particles, glyph shards, rings, pop-ups, milestones, wave-clear beat, ambient motion, adaptive budget), per-word typing/clear impact, Effects Full/Light toggle, status combo panel + CSS FX overlay; 5 new cards, trap retune, wave-scaled rarity, cross-lane rare fallback, slot-2 lane diversity, Skip rework | Smoke test: effect pools fire on a clear, milestone and wave-clear beat, FX toggle + persistence + CSS hooks, full-board 60fps check; every card asserted; bot: 60 skip dies 100% median 7, 60 random Dawn 30-50%, 80 random > 70%; balance-lab spread and no dead drafts | **Done** |
+| **v1.3 In-app updater** | Native-only update flow: GitHub release check at launch and via Help → Check for Updates…, user-confirmed download of the win64 zip, SHA-256 digest verification, staging under `%LOCALAPPDATA%\Wordfall\updates`, detached PowerShell helper that waits for exit, swaps files and relaunches; read-only install falls back to the release page; CLI diagnostics (`--check-update`, `--update-selftest`, `--write-updater-script`) | Check returns the live latest release and compares versions; download verifies GitHub's published SHA-256 and stages 9 files including `Wordfall.exe`; the install helper replaces a scratch target, cleans staging and relaunches (tested with `-NoStart`); native `--smoke` still passes; no update installs without user consent; offline/failed check is silent | **Done** |
 
 ## 8. Backlog / open questions
 
-1. **Split:** **Resolved in M6** — promoted as the 13th card, Hex / common, tier I every
+1. **Split:** **Resolved in M6** - promoted as the 13th card, Hex / common, tier I every
    5th spawn, tier II every 3rd (§5.2). The measured impact is in §10.
 2. **Meta progression** (unlocking cards between runs): out of scope.
-3. **Word pool:** **Resolved in M5** — 459 words in `words.js`, 38 of them 10–11 letters.
+3. **Word pool:** **Resolved in M5** - 459 words in `words.js`, 38 of them 10-11 letters.
 4. **80 WPM bot cell is not discriminative** (99.8% vs a >70% bar). Candidates for a later
-   pass: tighten to >85% or add a 70 WPM random cell (30–60%), and/or make the bot's
+   pass: tighten to >85% or add a 70 WPM random cell (30-60%), and/or make the bot's
    draft-quality invariant (slot-1-only vs slot-3-only decks) a first-class acceptance cell.
 5. **Bot is blind to reading cost and mistakes**: Reverse/Tunnel/Ghost measure ~0 delta and
    Steady Hand's shields measure 0 because the bot never mistypes. Human playtest is still
@@ -248,12 +251,12 @@ duplicate cards within a draft.
 
 What shipped vs. this doc, and the numbers that back the M5 "Done when" column.
 
-**Measured (400 bot runs per cell, seed block 1000–1399, `node tools/bot.mjs --seeds 400`)**
+**Measured (400 bot runs per cell, seed block 1000-1399, `node tools/bot.mjs --seeds 400`)**
 
 | Cell | Result | Target |
 | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies 400/400 (100%); median wave 6, mean 6.24; `{5:4, 6:299, 7:93, 8:4}` | dies at wave 5–7 |
-| 60 WPM, random picks | Dawn 34.8% (139/400) | Dawn 30–50% |
+| 60 WPM, no cards (`skip`) | dies 400/400 (100%); median wave 6, mean 6.24; `{5:4, 6:299, 7:93, 8:4}` | dies at wave 5-7 |
+| 60 WPM, random picks | Dawn 34.8% (139/400) | Dawn 30-50% |
 | 80 WPM, random picks | Dawn 100% (400/400) | Dawn > 70% |
 
 The default 100-seed run used by the bot's assertions gives median 6, 33% and 100% on the
@@ -264,12 +267,12 @@ Run-to-run seed blocks vary by a few points; the shipped curve sits mid-band on 
 **Deviations from the letter of the doc**
 
 - **Decoy fakes drop faster.** The card table never pinned how fast a fake falls, and
-  at normal fall speed a single fake blocked the target for a whole fall (10–20 s), which
+  at normal fall speed a single fake blocked the target for a whole fall (10-20 s), which
   made a picked Decoy an automatic loss and kept random-pick runs far below the M5 Dawn
   targets. Fakes now fall at `CFG.fakeSpeedMult = 4.5×`; the misspelled-fake rule is
   unchanged.
-- **Run length.** Target §2 says 8–12 minutes for a 60 WPM player. The bot's winning runs
-  average ~4.2 minutes (4.0–4.7 min): reaching wave 12 requires the spawn rate and fall
+- **Run length.** Target §2 says 8-12 minutes for a 60 WPM player. The bot's winning runs
+  average ~4.2 minutes (4.0-4.7 min): reaching wave 12 requires the spawn rate and fall
   speed to stay threatening, and those same two values make clears fast. Human runs are
   longer because of draft reading and imperfect play, but the gap is real.
 - **Tuning lives entirely in `CFG`** (see README §Tuning), including `wordRangeSteps`
@@ -296,7 +299,7 @@ Run-to-run seed blocks vary by a few points; the shipped curve sits mid-band on 
 - The playfield is a 16-colour canvas: ordered-dither sky, abstract signal-field horizon,
   Lucida Console words, square particles, dotted target brackets.
 - The rules run in a **fixed 800-unit-tall logical playfield**, uniformly scaled to the
-  client area. This keeps fall times — and therefore difficulty — identical at any window
+  client area. This keeps fall times - and therefore difficulty - identical at any window
   size; the bot's M5 numbers are the same in a 1024×768 window and a maximised 1080p one.
 - Native build: `win/` is a .NET 10 WinForms + WebView2 shell. It embeds `index.html`,
   `style.css`, `words.js`, `game.js` as resources and serves them from
@@ -314,10 +317,10 @@ independent M6 acceptance review is [QA-REPORT-M6.md](QA-REPORT-M6.md); the v1.0
 **Measured on the shipped M6 build** (my own fresh runs; the same commands and seed blocks
 as §9, not numbers carried over from M5):
 
-| Cell | 400 seeds (block 1000–1399) | 100 seeds | Target | Result |
+| Cell | 400 seeds (block 1000-1399) | 100 seeds | Target | Result |
 | --- | --- | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies 400/400; median 6, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies 100/100; median 6, `{6:78, 7:21, 8:1}` | dies at wave 5–7 | **PASS** |
-| 60 WPM, random picks | Dawn **37.3%** (149/400) | Dawn **40.0%** (40/100) | Dawn 30–50% | **PASS** |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 6, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies 100/100; median 6, `{6:78, 7:21, 8:1}` | dies at wave 5-7 | **PASS** |
+| 60 WPM, random picks | Dawn **37.3%** (149/400) | Dawn **40.0%** (40/100) | Dawn 30-50% | **PASS** |
 | 80 WPM, random picks | Dawn **98.8%** (395/400) | Dawn **99.0%** (99/100) | Dawn > 70% | **PASS** |
 
 `node tools/smoke.mjs` on the same build: **133/133 checks pass, 0 page/console errors,
@@ -342,10 +345,10 @@ while `state.simulating` so bot sweeps never write the player's record book.
 `wordfall.best` is still mirrored for compatibility; the welcome/About best score reads
 `records.bestScore`. The dialog lives in the Game menu only.
 
-**Split.** The free word is drawn from the real pool at 3–5 letters via
+**Split.** The free word is drawn from the real pool at 3-5 letters via
 `pickSpawnText(3, 5)`; it is not a fake. It is typeable, scores like a normal clear and
 counts toward the wave; it carries `word.harmless = true` so reaching the line costs no
-life, and it is staged above the queue so while it falls it blocks the words above it —
+life, and it is staged above the queue so while it falls it blocks the words above it  - 
 that lost reading time is the Hex's cost. It deliberately ignores `maxWords`, so the card
 bites even at a full queue. Teal (`COL.splitWord = '#00a0a0'`) with a dotted marker above
 the word (fake markers stay below). Tier I every 5th spawn, tier II every 3rd, driven by
@@ -356,7 +359,7 @@ without a hard-coded list.
 **Settings.** `wordfall.settings` stores `{muted}`, loaded at boot and written on every
 sound toggle; the menu label and toolbar button reflect it.
 
-**Deviation / notes.** No `CFG` tuning changed for M6 — the cards changed the random-pick
+**Deviation / notes.** No `CFG` tuning changed for M6 - the cards changed the random-pick
 mix, which moved the 60/random rate from 34.8% (M5) to 37.3% and 80/random from 100% to
 98.8%; both remain inside their M5 bands. Run length is unchanged (an 80 WPM bot run
 reaches Dawn in ~224 s, 3.7 min mean over 400 seeds). The native shell was rebuilt after
@@ -369,15 +372,15 @@ attach the built folder rather than rely on the repo.
 
 **Problem.** Pressure was already linear, but the mapping from Pressure to difficulty was
 not. The old `wordRangeSteps` put the first 4+ band at pressure 36, the 5+ band at 48 and
-the 6–10 band at 65; `spawnInterval` hit its floor at pressure 31 and `maxSpeed` capped at
-65. Wave 4 was therefore the first wave with both the spawn floor and the 4–7 band, and
-waves 4–6 stacked three separate steps. That is the wave-4 cliff.
+the 6-10 band at 65; `spawnInterval` hit its floor at pressure 31 and `maxSpeed` capped at
+65. Wave 4 was therefore the first wave with both the spawn floor and the 4-7 band, and
+waves 4-6 stacked three separate steps. That is the wave-4 cliff.
 
 **Background.** The game is now framed as the night shift at Relay 12: words fall out of a
 dead long-wave channel, the player patches the receiver at each wave break, and Dawn is the
 end of the shift. The Welcome/About copy and the one-line draft log (`RELAY_LOG` in
-`game.js`) carry it. The playfield backdrop is an abstract signal horizon — irregular bars
-and clusters of one-pixel caps, with no buildings, windows or mast — so the scenery reads as
+`game.js`) carry it. The playfield backdrop is an abstract signal horizon - irregular bars
+and clusters of one-pixel caps, with no buildings, windows or mast - so the scenery reads as
 frozen signal noise rather than a literal city. No rule reads the log; no new screen or
 asset was added.
 
@@ -393,18 +396,18 @@ asset was added.
 | `spawnDecay` | 0.031 |
 | `wordRangeSteps` | `[10,[3,5]] [22,[3,6]] [38,[4,6]] [54,[4,7]] [68,[5,8]] [86,[6,9]] [105,[6,10]]` |
 
-Each length step moves at most one bound. Wave 4 is `4–6` with a 1.55 s spawn interval
-instead of `4–7` with the 1.25 s floor. Fall speed keeps rising to pressure 77 instead of
-capping near wave 5–6. The 800-unit playfield crosses in ~15.5 s at wave 1 and ~8.4 s once
+Each length step moves at most one bound. Wave 4 is `4-6` with a 1.55 s spawn interval
+instead of `4-7` with the 1.25 s floor. Fall speed keeps rising to pressure 77 instead of
+capping near wave 5-6. The 800-unit playfield crosses in ~15.5 s at wave 1 and ~8.4 s once
 the speed cap is reached.
 
 **Measured on the implemented build** (`node tools/bot.mjs --seeds 400`, seed block
-1000–1399; independent block 5000 in parentheses):
+1000-1399; independent block 5000 in parentheses):
 
 | Cell | Result | M5 target | Status |
 | --- | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.13, `{6:1, 7:345, 8:53, 9:1}` | median 5–7 | PASS |
-| 60 WPM, random picks | Dawn 33.0% (132/400); 36.0% (144/400) | 30–50% | PASS |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.13, `{6:1, 7:345, 8:53, 9:1}` | median 5-7 | PASS |
+| 60 WPM, random picks | Dawn 33.0% (132/400); 36.0% (144/400) | 30-50% | PASS |
 | 80 WPM, random picks | Dawn 96.8% (387/400); 96.3% (385/400) | >70% | PASS |
 
 The default 100-seed run gives median 7, 32.0% and 96.0%. The 80 WPM winning run averages
@@ -468,7 +471,7 @@ transform/opacity only.
 ### 12.2 Draft balance pass
 
 Evidence: [BALANCE-LAB.md](BALANCE-LAB.md) (13-card baseline, 400 seeds/cell, per-card power
-paired by seed, 2,200 seeded drafts, draft-policy proxies). Headline findings: slot 3 was a
+paired by seed, 2,200 seeded drafts, draft-policy proxies). Main findings: slot 3 was a
 survival black hole (slot-3-only decks dawn 0%, slot-1-only 100%), the card spread ran
 +42 pp (Overclock I) to −18.5 pp (Longshot), Greed II was worse than Greed I, Ledger carried
 a hidden +8 Pressure tax, Skip was dominated, and late drafts decayed because the 9 boon
@@ -485,16 +488,16 @@ Shipped changes:
   shields are invisible to it; the points are score-only).
 - **Draft rules**: rare roll = 24% + 1.2%/wave (slot 3 base 30%), cap 45%; cross-lane rare
   fallback; slot 2 prefers a different type from slot 1 70% of the time. Measured effect:
-  slot-3 rare rate 21.4% → 36.6% (late bands now reach 38–47%), slot 2 still offers Boons
+  slot-3 rare rate 21.4% → 36.6% (late bands now reach 38-47%), slot 2 still offers Boons
   (~12% of its offers), 0 dead drafts / 0 ineligible offers, no-boon drafts 0%.
 
-Measured on the shipped M7 build (seed block 1000–1399; independent block base 5000 in
+Measured on the shipped M7 build (seed block 1000-1399; independent block base 5000 in
 parentheses):
 
 | Cell | Result | Target | Status |
 | --- | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.20 (median 7) | dies at wave 5–7 | PASS |
-| 60 WPM, random picks | Dawn **43.3%** (173/400); **42.3%** (127/300 on base 5000) | 30–50% | PASS |
+| 60 WPM, no cards (`skip`) | dies 400/400; median 7, mean 7.20 (median 7) | dies at wave 5-7 | PASS |
+| 60 WPM, random picks | Dawn **43.3%** (173/400); **42.3%** (127/300 on base 5000) | 30-50% | PASS |
 | 80 WPM, random picks | Dawn **99.8%** (399/400); **100%** (300/300) | > 70% | PASS |
 
 Card spread after the pass (marginal Δdawn at 60 WPM, paired, final-build measurement):
@@ -502,7 +505,7 @@ Overclock II +59, Overclock I +56, Slow Drift II +50, Slow Drift I +25, Decoy +1
 Drought +14/+24, Rally +2/+19, Lifeline +12, Bargain/Second Draft +1 … Greed II −8,
 Greed I −7, Longshot −5. The −18.5 pp trap is gone and every remaining negative card is a
 mild tempo cost (<0.1 wave isolated survival impact). Draft policies in the same build:
-slot-1-only decks dawn 100%, slot-3-only 21% (was 0%), random 69%, skip 0% — the slot-3
+slot-1-only decks dawn 100%, slot-3-only 21% (was 0%), random 69%, skip 0% - the slot-3
 hole is closed but still the weaker lane by design.
 
 ### 12.3 Notes and deviations
@@ -516,3 +519,67 @@ hole is closed but still the weaker lane by design.
   harnesses were updated for the new milestone, and the debug hook gained `fxState()`,
   `toggleEffects()`, `perf()`, `scoreMult()`, `spawnInterval()` and `rerollsLeft()`.
 - The 80 WPM acceptance cell is not discriminative (100% vs a >70% bar); see §8 backlog.
+
+## 13. Implementation notes (v1.3, native updater)
+
+The Windows build can update itself from the project's public GitHub releases. This is a
+shell feature only: the web build and the game rules are unchanged, and the page's
+Help → Check for Updates… simply opens the release page when no native host is present
+(the shell posts a `check-update` message over the existing WebView2 string-message
+channel).
+
+### 13.1 Flow
+
+1. **Check.** `Updater.CheckAsync()` calls
+   `GET https://api.github.com/repos/Boci0/wordfall/releases/latest` with a `Wordfall-Updater`
+   User-Agent. It parses `tag_name`, `name`, `html_url`, `body` and `assets[]`, picks the
+   `*.zip` asset (preferring one whose name contains `win64`), and compares the tag against
+   the running assembly version (`<Version>1.3.0</Version>` → `AssemblyInformationalVersion`).
+   Version comparison normalizes a leading `v` and ignores pre-release/build suffixes.
+2. **Consent.** When a newer version exists the shell shows a Yes/No dialog. Nothing is
+   installed unless the player answers Yes. The check runs once ~6 s after launch and on
+   demand from Help → Check for Updates…; a failed or offline check is silent in the
+   automatic case and only reports in the manual case.
+3. **Download + verify.** The zip streams to
+   `%LOCALAPPDATA%\Wordfall\updates\<tag>\Wordfall-win64.zip` with a small Win95-style
+   progress dialog. If the release asset carries GitHub's `digest` (`sha256:…`) the
+   download's SHA-256 must match before anything is extracted; a mismatch discards it.
+4. **Stage.** The zip is extracted to `…\updates\<tag>\staged`; the updater accepts either
+   a flat archive (the release layout) or one top-level folder, and requires
+   `Wordfall.exe` to exist. A folder the player cannot write to (e.g. a `Program Files`
+   copy) is detected before download and falls back to opening the release page.
+5. **Swap + relaunch.** `Updater.LaunchInstallerAndExit()` writes the detached helper to
+   `%TEMP%\Wordfall-update-<pid>.ps1` and starts it hidden. The helper waits (up to 90 s)
+   for Wordfall to exit so its DLLs are unlocked, retries the copy up to 40 times (the
+   WebView2 host can hold a file for a moment), verifies `Wordfall.exe` landed, deletes the
+   staging folder, relaunches the new exe and deletes the helper. Every step appends to
+   `%LOCALAPPDATA%\Wordfall\updates\last-update.log`. If the copy finally fails the old
+   install is left intact and the log records why.
+6. **State is outside the install folder.** Records, best scores, settings and the WebView2
+   profile live in `%LOCALAPPDATA%\Wordfall`, so an update keeps all of them.
+
+### 13.2 Diagnostics and verification
+
+The updater is testable without touching the running install or waiting for a real newer
+release:
+
+```
+Wordfall.exe --check-update [--current-version=1.0.0] [--update-out=check.json]
+Wordfall.exe --update-selftest=%TEMP%\wf-update [--current-version=1.0.0] [--keep-staged]
+Wordfall.exe --write-updater-script=%TEMP%\wf-install.ps1
+```
+
+`--check-update` exits 0 when the check succeeded (whether or not an update exists) and 1
+on a network/parse error. `--update-selftest` performs check + download + digest verify +
+extract + `Wordfall.exe` validation, then cleans the staging folder unless `--keep-staged`,
+and reports the release/asset/verification fields as JSON. The install helper supports
+`-NoStart`, so the swap can be rehearsed against a scratch target folder and then verified
+by running the copied exe's `--selftest`.
+
+Measured on the v1.3 build: `--check-update` on 1.3.0 reports the v1.2 release with
+`Available: false`; with `--current-version=1.0.0` it reports `Available: true`, the same
+536,487-byte asset and GitHub's SHA-256 digest; `--update-selftest` downloads v1.2,
+verifies the digest, extracts 9 files including `Wordfall.exe`, and cleans up; the install
+helper swapped a scratch target (old files replaced, staging removed, log written) and the
+copied exe passed `--selftest`. The native `--smoke` run still passes on the v1.3 shell, and
+the browser smoke/bot suites are unaffected (the web game did not change).

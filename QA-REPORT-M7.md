@@ -1,4 +1,4 @@
-# QA-REPORT-M7 — Wordfall v1.2 / M7
+# QA-REPORT-M7 - Wordfall v1.2 / M7
 
 QA owner: `qa-verify` (task-5). Date: 2026-10-21 (Asia/Singapore).
 
@@ -44,7 +44,7 @@ Both tools now gate on `version === 'M7'` and retry until the game exposes it
   (HUD shows `Shields: 1/1` with `shieldMax 0`), skip arms the `waveBanner`.
 - M7 wave-clear beat: after the 10th clear the run stays in `playing` with
   `waveClearT > 0`, `typeLetter()` is inert, the board is frozen, and the draft
-  opens after the beat (~0.85 s) — every "clear 10 → expect draft" flow now
+  opens after the beat (~0.85 s) - every "clear 10 → expect draft" flow now
   polls for the draft instead of asserting it immediately.
 - Draft structure for 18 cards: 1050 seeded `beginDraft()` offers, no
   duplicates, slot 1 always a Boon, slot 3 Hex/Gambit, no dead drafts
@@ -58,7 +58,7 @@ Both tools now gate on `version === 'M7'` and retry until the game exposes it
   toggle + body class + menu label + `wordfall.settings` reload persistence +
   light-mode emission reduction, `#fxOverlay` pointer-events/z-order and
   Help → Controls dialog above it, plus the frame-time run below.
-- Screenshots: existing 01–09 regenerated, plus new `10-fx-clear.png`,
+- Screenshots: existing 01-09 regenerated, plus new `10-fx-clear.png`,
   `11-wave-clear.png`, `12-draft-rare.png`, `13-draft-upgrade.png`.
 - Perf measurement: full board, 185 rAF frames (~3 s) of continuous clears,
   first 8 frames ignored; full FX then Light FX. Headless Chrome occasionally
@@ -71,7 +71,7 @@ cells are the same. The optional draft-quality invariant from BALANCE-LAB §6.4
 was **not** added: `sim()` has no draft-policy switch, and the only reliable way
 to add it would duplicate the balance lab's policy loop.
 
-## Smoke suite — 197/197 PASS
+## Smoke suite - 197/197 PASS
 
 `node tools/smoke.mjs` → exit 0, no page errors and no console errors, ~36 s.
 Groups: contract 1, M1 10, M2 19, M3 54, M4 1, M6 46, M7 65, runtime 1.
@@ -111,7 +111,7 @@ Full FX, 185 measured frames with a full board and one clear per frame:
 `window.__wordfall.perf()` at the end of the full run: `{avgMs: 17.41, fps: 57,
 pressure: 1, quality: 'full'}`. Peak pools touch but never exceed
 `CFG.fxMax*`; adaptive budget stayed at 1.0 (full quality). Repeated runs measured
-between 59.1 and 60 fps avg with 2–7 isolated dropped frames — headless Chrome
+between 59.1 and 60 fps avg with 2-7 isolated dropped frames - headless Chrome
 scheduling noise, not a sustained frame-time cliff.
 
 ## Bot / balance cells
@@ -125,19 +125,19 @@ scheduling noise, not a sustained frame-time cliff.
 | 400 seeds, base 1000 (reference) | 100% deaths (400/400), median 7, mean 7.14, {6:3, 7:339, 8:57, 9:1} | Dawn 43.3% (173/400), median 10 | Dawn 99.8% (399/400) |
 | 300 seeds, base 5000 (reference) | 100% deaths (300/300), median 7, mean 7.14, {7:257, 8:43} | Dawn 42.3% (127/300), median 10 | Dawn 100% (300/300) |
 
-All assertions PASS: 60 skip always dies + median in 5–7; 60 random in 30–50%;
+All assertions PASS: 60 skip always dies + median in 5-7; 60 random in 30-50%;
 80 random > 70%. (The Lead's note said 80 WPM random 400/400; the actual run is
-399/400 = 99.8% — cell still passes comfortably. 40 WPM rows are reported but
+399/400 = 99.8% - cell still passes comfortably. 40 WPM rows are reported but
 not asserted.)
 
-## Native build (`win\build.ps1 -Smoke`) — **PASS** (after Lead's `SmokeRunner.cs` gate fix)
+## Native build (`win\build.ps1 -Smoke`) - **PASS** (after Lead's `SmokeRunner.cs` gate fix)
 
 First run of the frozen build exposed a stale native version gate: `dotnet publish`
 succeeded, but the published exe's `--smoke` failed with
 `TimeoutException: window.__wordfall.version never reached 'M6' within 30s (last
 value: M7)` because `win/SmokeRunner.cs` still hardcoded M6 (5 references). QA
 reported it instead of editing `win/`; the Lead patched `win/SmokeRunner.cs`
-(M6 → M7, that file only — no game/CSS changes) and reran the build.
+(M6 → M7, that file only - no game/CSS changes) and reran the build.
 
 Final native result (Lead-run, frozen M7 build):
 
@@ -147,16 +147,16 @@ Final native result (Lead-run, frozen M7 build):
 | `ok` / `mode` | `true` / `"smoke"` |
 | `version` | `"M7"` |
 | `embeddedMode` / `hasWebViewBridge` | `true` / `true` |
-| `titleText` | `"Wordfall — Untitled"` |
+| `titleText` | `"Wordfall - Untitled"` |
 | `simResult` | wpm 60, mode skip, seed 1000: died true, cleared 65, wave 7, score 10054, pressure 89, seconds 146, bestCombo 65 |
 | `elapsedMs` | 2305 |
 | `browserVersion` | 155.0.4283.62 |
 | `profileFallback` / `error` | `false` / `null` |
 
 The published exe is `dist/Wordfall-win64/Wordfall.exe` (freshly published,
-gitignored). The publish step prints a pre-existing note —
+gitignored). The publish step prints a pre-existing note  - 
 "Smoke could not write its result from the workspace folder; retrying from a
-temp copy of the published binaries" — which is build.ps1's sandbox/ACL fallback,
+temp copy of the published binaries" - which is build.ps1's sandbox/ACL fallback,
 not a failure; the retry passed. The native sim result matches the 60 WPM/skip
 acceptance cell (dies, wave 7).
 
@@ -183,7 +183,7 @@ behaviours can look odd in still frames: (a) freshly spawned words flicker their
 glyphs in for ~0.24 s ("materialise out of the signal"), so shots taken within
 that window show partial words; the screenshot staging waits it out. (b) the
 18-card HUD shot grants Reverse + Tunnel, so the staged words are drawn
-right-to-left with only 3 visible letters (dots for the hidden ones) — by
+right-to-left with only 3 visible letters (dots for the hidden ones) - by
 design, not a rendering bug.
 
 ## Residual risks / known issues
@@ -191,7 +191,7 @@ design, not a rendering bug.
 1. **Native gate history**: the first `-Smoke` run was red on the stale
    `win/SmokeRunner.cs` M6 gate; it is now fixed and the final run is PASS (above).
    No game/CSS change was needed.
-2. **Headless frame-time variance**: isolated dropped vsync frames (2–8 of 185)
+2. **Headless frame-time variance**: isolated dropped vsync frames (2-8 of 185)
    occur; p95 stays ~17 ms. The assertion therefore uses a 10% long-frame budget
    and p95/max gates. On a real display the adaptive FX budget also downscales
    only if avg > 21.5 ms (it stayed 1.0 during these runs).

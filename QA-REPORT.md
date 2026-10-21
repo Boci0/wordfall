@@ -1,11 +1,11 @@
-# QA-REPORT.md — independent acceptance review (Wordfall, Win95 presentation + native build)
+# QA-REPORT.md - independent acceptance review (Wordfall, Win95 presentation + native build)
 
-Reviewer: `qa2` (independent verifier — not the author of `game.js`, `style.css`, `index.html`,
+Reviewer: `qa2` (independent verifier - not the author of `game.js`, `style.css`, `index.html`,
 `words.js`, `tools/` or `win/`).
-Date: 2026-10-21. Final status: **PASS — no open defects** on the build pinned below.
+Date: 2026-10-21. Final status: **PASS - no open defects** on the build pinned below.
 
 This review covers the Windows 95 presentation overhaul, the fall-speed retune requested by
-the user, and the native Windows build. The earlier M2–M5 sign-off (`qa`) is not assumed;
+the user, and the native Windows build. The earlier M2-M5 sign-off (`qa`) is not assumed;
 the reported numbers below are my own fresh runs on the final build.
 
 ## Build under test (final, pinned)
@@ -34,7 +34,7 @@ earlier-build probes are cited only where explicitly marked interim.
 
 ## Verdict
 
-**PASS.** Every M2–M5 acceptance target holds on the retuned build; the Windows 95
+**PASS.** Every M2-M5 acceptance target holds on the retuned build; the Windows 95
 presentation reads as a genuine period application at 1024×768, 1280×800, 1920×1080 and in
 the native embedded mode; the native exe passes its own headless smoke test and embeds the
 exact final web files. **Blocker: none. Major: none. Minor open: none.** The three defects
@@ -49,10 +49,10 @@ are stylistic observations, not defects.
 | `node tools/bot.mjs --seeds 100` | **0** | **5/5 assertions PASS**; 60/skip dies 100%, median **6**, mean 6.23, `{6:78, 7:21, 8:1}`; 60/random Dawn **33.0%** (33/100); 80/random **100%**; 2.0 s |
 | `node tools/bot.mjs --seeds 400` | **0** | **5/5 assertions PASS**; 60/skip dies 400/400, median **6**, mean 6.24, `{5:4, 6:299, 7:93, 8:4}`; 60/random **34.8%** (139/400); 80/random **100%** (400/400); 3.7 s |
 | my mechanics probe (`qa2 mech`) | 0 | **19/19 checks PASS** |
-| my resolution-independence probe (`qa2 res`) | 0 | **PASS** — identical sims and identical 100-seed sweeps at 1024×768 / 1920×1080 / embedded |
+| my resolution-independence probe (`qa2 res`) | 0 | **PASS** - identical sims and identical 100-seed sweeps at 1024×768 / 1920×1080 / embedded |
 | my final UI probe (`qa2 ui-final`) | 0 | **40/40 checks PASS**, 0 console/page errors (fixes + core flows) |
-| my real-keyboard probe (`qa2 realkeys`) | 0 | **5/5 PASS** — 22+ human-pace keypresses, 10 clears typed on the real keyboard open the draft, key 2 picks, 0 console/page errors |
-| my FPS probe (12 forced words + 4 echoes) | 0 | **60.1–60.4 avg fps**, 0 frames > 25 ms, 0 long tasks, 4 viewport/embed cells |
+| my real-keyboard probe (`qa2 realkeys`) | 0 | **5/5 PASS** - 22+ human-pace keypresses, 10 clears typed on the real keyboard open the draft, key 2 picks, 0 console/page errors |
+| my FPS probe (12 forced words + 4 echoes) | 0 | **60.1-60.4 avg fps**, 0 frames > 25 ms, 0 long tasks, 4 viewport/embed cells |
 | my retune probe | 0 | fall crossing **14.57 s** start / **7.98 s** at max pressure (from y=0), queue cap **6**, `spawnMin` 1.25 s |
 | native `Wordfall.exe --selftest` (temp copy) | **0** | `ok:true`; embedded assets byte-identical to the four web files; WebView2 runtime **155.0.4283.62** |
 | native `Wordfall.exe --smoke` (temp copy) | **0** | `ok:true`, `version:"M5"`, `embeddedMode:true`, `hasWebViewBridge:true`, seeded sim identical to browser |
@@ -67,15 +67,15 @@ The 100/400-seed bot cells reproduce exactly the Lead's stated retune expectatio
 | --- | --- | --- | --- |
 | **M2** | 10 clears → draft; pick resumes with combo kept; pressure +4; Heat changes score; Skip/Reroll/1-2-3/R/S | **PASS** | smoke M2 block all green; my probe: combo 7 kept through pick, `pressure = cleared + 4·drafts` at 11, skip +4 pressure / +50·wave points, reroll once, keys 1/2/3 pick |
 | **M3** | 12 cards; Shield; Lock-on; eligibility; tier II | **PASS** | smoke verifies every card/tier; my probe re-derived 300 seeded offers (slot 1 Boon 300/300, slot 3 Hex/Gambit 300/300, no duplicates, tier I) and **800 constrained-state offers with 0 illegal cards**; lock-on/shield verified independently |
-| **M4** | hit-pause, particles, combo pitch, near-miss shake, danger audio, card rise; 60 fps with 12 words + Ghost echoes | **PASS** (audible audio still UNVERIFIED) | smoke M4 checks; my FPS run: **60.1–60.4 avg fps**, max frame 17.4–19.2 ms, 0 frames > 25 ms, 0 long tasks with 11–12 forced words + 4 echoes + DOM HUD updating every frame (see §8) |
-| **M5** | 400+ words; 60 no cards dies wave 5–7; 60 random Dawn 30–50%; 80 random > 70% | **PASS (retuned)** | 60/skip dies **100%**, median **6** (inside 5–7); 60/random **33.0% / 34.8%**; 80/random **100% / 100%** at 100/400 seeds |
+| **M4** | hit-pause, particles, combo pitch, near-miss shake, danger audio, card rise; 60 fps with 12 words + Ghost echoes | **PASS** (audible audio still UNVERIFIED) | smoke M4 checks; my FPS run: **60.1-60.4 avg fps**, max frame 17.4-19.2 ms, 0 frames > 25 ms, 0 long tasks with 11-12 forced words + 4 echoes + DOM HUD updating every frame (see §8) |
+| **M5** | 400+ words; 60 no cards dies wave 5-7; 60 random Dawn 30-50%; 80 random > 70% | **PASS (retuned)** | 60/skip dies **100%**, median **6** (inside 5-7); 60/random **33.0% / 34.8%**; 80/random **100% / 100%** at 100/400 seeds |
 
 ## 3. Measured M5 numbers (final build)
 
-| Cell | 100 seeds (base 1000) | 400 seeds (block 1000–1399) | SPEC target | Result |
+| Cell | 100 seeds (base 1000) | 400 seeds (block 1000-1399) | SPEC target | Result |
 | --- | --- | --- | --- | --- |
-| 60 WPM no cards (`skip`) | dies 100%, median **6**, mean 6.23, `{6:78, 7:21, 8:1}` | dies 400/400, median **6**, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies at wave 5–7 | **PASS** |
-| 60 WPM random picks | Dawn **33.0%** (33/100), median wave 7 | Dawn **34.8%** (139/400), median wave 7 | Dawn 30–50% | **PASS** |
+| 60 WPM no cards (`skip`) | dies 100%, median **6**, mean 6.23, `{6:78, 7:21, 8:1}` | dies 400/400, median **6**, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies at wave 5-7 | **PASS** |
+| 60 WPM random picks | Dawn **33.0%** (33/100), median wave 7 | Dawn **34.8%** (139/400), median wave 7 | Dawn 30-50% | **PASS** |
 | 80 WPM random picks | Dawn **100%** (100/100) | Dawn **100%** (400/400) | > 70% | **PASS** |
 | 40 WPM (informational) | skip dies 100% median 4; random dies 100% median 4 | same | not asserted | informational |
 
@@ -87,7 +87,7 @@ The 100/400-seed bot cells reproduce exactly the Lead's stated retune expectatio
 - fall speed at pressure 0 = **46.2 logical px/s** (52 × 800/900); at the cap = **≈84.5 px/s**.
 - a word placed at y=0 reaches the danger line in **14.57 s** at pressure 0 and **7.98 s** at the
   speed cap; from the real spawn point above the viewport that is ≈15.5 s / ≈8.5 s.
-  The pre-retune build measured ≈36.6 s / ≈17.9 s on the same path — so fall crossing is now
+  The pre-retune build measured ≈36.6 s / ≈17.9 s on the same path - so fall crossing is now
   roughly **2× faster**, matching the requested change.
 - `spawn()` queue cap measured at **6** words; spawn interval 2.8 s at pressure 0, reaching the
   1.25 s minimum at pressure 31. The retune is therefore not just a speed multiplier: the
@@ -98,7 +98,7 @@ The 100/400-seed bot cells reproduce exactly the Lead's stated retune expectatio
 The UI overhaul / retune did not change the rules. My own probe (19 checks, all PASS)
 independently recomputed the spec:
 
-- **Scoring**: `round(letters × (10 + Ledger) × comboMult × heatMult × Greed × Longshot)` —
+- **Scoring**: `round(letters × (10 + Ledger) × comboMult × heatMult × Greed × Longshot)`  - 
   base 5-letter clear 50; stacked case (7 letters, combo 20 → ×2.0, Ledger, 2 Heat → ×1.5,
   Greed II ×1.6) = **403** = predicted 403.
 - **Pressure**: `cleared + 4 × draftsTaken` → 11 after 3 clears + 2 drafts.
@@ -109,10 +109,10 @@ independently recomputed the spec:
   holds; a letter matching the other word is a mistake, not a re-target.
 - **Word-length ramp**: `wordRange()` matched an independent reimplementation of
   `CFG.wordRangeSteps` at 16 pressure points including every boundary.
-- **Draft composition**: 300 seeded offers — slot 1 always Boon, slot 3 always Hex/Gambit, no
+- **Draft composition**: 300 seeded offers - slot 1 always Boon, slot 3 always Hex/Gambit, no
   duplicate card, fresh offers tier I.
 - **Eligibility**: 800 offers across 4 constrained states (3 lives, shieldMax 3, all four Hexes,
-  maxed cards) — **0** illegal offers.
+  maxed cards) - **0** illegal offers.
 - **Overclock**: 5th manual clear auto-clears one extra word (cleared 5→6) while `waveCleared`
   only counts the manual clear; the 10th manual clear ends the wave and the auto-clear still
   scores.
@@ -136,7 +136,7 @@ uniformly scaled to the client; only the logical *width* changes with the window
 | 1920×1080 | 1090×674 | 0.843 | 1294 × 800 | 20.2 CSS px |
 | 1920×1080 embedded | 1912×984 | 1.230 | 1554 × 800 | 29.5 CSS px |
 
-**Evidence:** for seeds 1000–1011, `__wordfall.sim({wpm:60, mode:'random'|'skip', seed})`
+**Evidence:** for seeds 1000-1011, `__wordfall.sim({wpm:60, mode:'random'|'skip', seed})`
 returned **byte-identical JSON** at 1024×768, 1920×1080 and the embedded 1920×1080 viewport.
 The in-page 100-seed sweeps were also identical at 1024×768 and 1920×1080:
 60/skip Dawn 0% median 6; 60/random 33% median 7; 80/random 100% median 12.
@@ -154,10 +154,10 @@ scrolling at 1024×768, 1280×800 and 1920×1080 (§7, §9).
 | Draft dialog | 3 cards; click, keys 1/2/3 pick; R rerolls once (button → “Reroll (used)”, disabled, second R no-op); S skips (+50×wave, pressure +4); auto-opens after exactly 10 clears; 12-card “Held:” line fits at 1024×768; status bar and buttons update | **PASS** |
 | Menus | File/Game/View/Help open; New Run, Restart Run, Skip Draft, Sound toggle, Maximize/Restore, Controls, About, Exit all run; disabled states when not applicable; click-outside closes; hovering another menu switches; **Alt+F/G/V/H now open the matching menu** | **PASS** |
 | Modal frame (new) | while any dialog is open the window frame is inert and greyed (`modal-open`; menus/toolbar `pointer-events:none`, menu labels grey); mouse and Alt accelerators do nothing; closing restores the frame; in-dialog Reroll/Skip buttons still work | **PASS** |
-| Title bar – minimize | hides the window, pauses the game; taskbar button visible and now **raised** (top-left light bevel); taskbar button restores the window and resumes; button returns to the pressed bevel | **PASS** |
-| Title bar – maximize | toggles; maximised fills 100vw × (100vh−30); View menu label switches Maximize/Restore; double-click title bar toggles | **PASS** |
-| Title bar – close | opens the quit confirmation; No keeps the app open; Yes hides the app and its taskbar button; desktop icon double-click/Start menu item restores | **PASS** |
-| Title bar – drag | browser mode drags the window by the title bar (clamped to the viewport) | **PASS** |
+| Title bar - minimize | hides the window, pauses the game; taskbar button visible and now **raised** (top-left light bevel); taskbar button restores the window and resumes; button returns to the pressed bevel | **PASS** |
+| Title bar - maximize | toggles; maximised fills 100vw × (100vh−30); View menu label switches Maximize/Restore; double-click title bar toggles | **PASS** |
+| Title bar - close | opens the quit confirmation; No keeps the app open; Yes hides the app and its taskbar button; desktop icon double-click/Start menu item restores | **PASS** |
+| Title bar - drag | browser mode drags the window by the title bar (clamped to the viewport) | **PASS** |
 | Taskbar / Start / desktop | Start menu opens with the vertical banner and 4 items (Wordfall, Controls…, About…, Shut Down…); items run; clock renders 12-hour time; two desktop icons select/double-click; Readme opens Controls | **PASS** |
 | Game/overlays | gameover dialog (score, stats, cards, Retry, Quit→quit confirm); Dawn dialog (score, stats, cards, Keep Playing → endless wave 13, New Run → wave 1 / score 0); title and taskbar text follow phase | **PASS** |
 | Keyboard play | final-build real-key probe: 22+ real keypresses at ~110 ms human pace cleared words; 10 clears typed on the real keyboard opened the draft; key 2 picked a card and resumed; no console/page errors | **PASS** |
@@ -169,9 +169,9 @@ flows (40/40).
 
 ## 7. Presentation / authenticity
 
-### 7.1 Win95 details — PASS
+### 7.1 Win95 details - PASS
 
-Verified by screenshot inspection (crops at 2–4× nearest-neighbour) and computed styles:
+Verified by screenshot inspection (crops at 2-4× nearest-neighbour) and computed styles:
 
 | Detail | Observation | Result |
 | --- | --- | --- |
@@ -193,30 +193,30 @@ Verified by screenshot inspection (crops at 2–4× nearest-neighbour) and compu
 
 1. **Modal backdrop dims the playfield 30 %** (`rgba(0,0,0,.3)`). Windows 95 did not dim behind
    a modal dialog; this is a modern affordance kept for legibility. Visually restrained.
-2. **Only menu labels grey out while a dialog is open** — the toolbar icons and the title-bar
+2. **Only menu labels grey out while a dialog is open** - the toolbar icons and the title-bar
    buttons keep their enabled look (the toolbar is pointer-inert, but the title-bar buttons are
    still clickable). Win95 would grey/disable the whole frame. Cosmetic inconsistency.
-3. **Hard drop shadows** on dropdowns/dialogs (0 blur, 3–5 px offset) — win95 itself had no
+3. **Hard drop shadows** on dropdowns/dialogs (0 blur, 3-5 px offset) - win95 itself had no
    shadows; these are hard-edged and read as period-adjacent rather than modern.
 4. **Start flag** is four solid squares rather than the wavy Win95 flag; still clearly
    period-coded.
-5. Title/task text uses an em dash (“Wordfall — Untitled”); Win95-era captions usually used a
+5. Title/task text uses an em dash (“Wordfall - Untitled”); Win95-era captions usually used a
    hyphen. Cosmetic.
 6. With `maxWords: 6` the M4 “12 words + echoes” condition is not reachable through normal
-   spawning; it is still verified synthetically (11–12 forced words + 4 echoes at 60 fps).
+   spawning; it is still verified synthetically (11-12 forced words + 4 echoes at 60 fps).
 
 ### 7.3 Visual QA screenshots
 
 Inspected with the image tool at 1024×768, 1280×800 and 1920×1080, plus embedded mode; final
 build re-captured at 1280×800 (menu/welcome, playing, draft). Findings: no clipping or overlap
 at any size; window/dialog metrics sane; menu bar greyed correctly behind the draft dialog;
-draft cards fit; status panels never clip; word font 17.3–29.5 CSS px depending on scale;
+draft cards fit; status panels never clip; word font 17.3-29.5 CSS px depending on scale;
 no mojibake, no broken bevels, no modern UI artefacts. The Tunnel card correctly renders
 hidden letters as dots in the playfield (intentional card effect, not a rendering fault).
 
 ## 8. Performance
 
-Final build, headless Chrome (vsync 60 Hz), 11–12 forced words + 4 Ghost echoes, DOM HUD
+Final build, headless Chrome (vsync 60 Hz), 11-12 forced words + 4 Ghost echoes, DOM HUD
 updating every frame:
 
 | Cell | avg fps | min fps | max frame | frames > 25 ms | long tasks > 50 ms |
@@ -242,8 +242,8 @@ Verified on the final exe (SHA-256 `F296189F…`, `Wordfall.dll` `42056A09…`, 
 | Item | Result |
 | --- | --- |
 | `--selftest` (no WebView2) | **PASS, exit 0**: the four embedded resources exist and are byte-identical to the final web files (`index.html` 17,850 B, `style.css` 18,215 B, `words.js` 4,982 B, `game.js` 66,224 B); WebView2 runtime **155.0.4283.62** detected |
-| `--smoke` from a temp copy of the published folder | **PASS, exit 0**, `smoke-result.json`: `ok:true`, `version:"M5"`, `phase:"gameover"`, `embeddedMode:true`, `hasWebViewBridge:true`, `titleText:"Wordfall — Untitled"`, `browserVersion:"155.0.4283.62"`, `profileFallback:false`, 2.26 s |
-| Sim inside the native shell | seeded `sim({wpm:60, mode:'skip', seed:1000})` = cleared **60**, wave **7**, score **7,758**, pressure **84** — identical to the browser sim for the same seed, so the embedded files are the real ones and the JS runs normally in WebView2 |
+| `--smoke` from a temp copy of the published folder | **PASS, exit 0**, `smoke-result.json`: `ok:true`, `version:"M5"`, `phase:"gameover"`, `embeddedMode:true`, `hasWebViewBridge:true`, `titleText:"Wordfall - Untitled"`, `browserVersion:"155.0.4283.62"`, `profileFallback:false`, 2.26 s |
+| Sim inside the native shell | seeded `sim({wpm:60, mode:'skip', seed:1000})` = cleared **60**, wave **7**, score **7,758**, pressure **84** - identical to the browser sim for the same seed, so the embedded files are the real ones and the JS runs normally in WebView2 |
 | `--smoke` launched in place from `wordfall\dist` | **fails in this agent sandbox** with `0x800700AA … after retrying with a clean one`, and the result file cannot be written to `%TEMP%` either. The sandbox denies file creation to executables launched from the workspace path, so WebView2 cannot create its profile. Copying the identical published folder to `%TEMP%` passes. `win/build.ps1 -Smoke` implements exactly this fallback; it is an environment limitation, not an app defect |
 | Framework-dependent | `<SelfContained>false</SelfContained>`; `Wordfall.runtimeconfig.json` requires `Microsoft.NETCore.App 10.0.0` + `Microsoft.WindowsDesktop.App 10.0.0`; this machine has .NET **10.0.10** + WindowsDesktop 10.0.x, and WebView2 155 |
 | Embedding | `win/Wordfall.csproj` embeds `..\index.html`, `..\style.css`, `..\words.js`, `..\game.js` as manifest resources (explicit relative includes, so a rebuild always picks up the current files); `WebAssets.cs` serves them from memory; selftest byte sizes prove the final exe is current |
@@ -271,7 +271,7 @@ screenshots also exist in `win/shots/` (`wordfall-draft.png`, `wordfall-gameplay
 | # | Severity | Defect | Fix / evidence |
 | --- | --- | --- | --- |
 | 1 | Minor | `.task-btn.raised` class was applied by JS on minimize but had no CSS rule, so the taskbar button kept its pressed bevel (no visual cue the window was minimised) | `style.css` now has `.task-btn.raised` with the light-top/left bevel; verified computed box-shadow changes both ways: pressed `inset 0 0 dark, inset -1 -1 white, inset 2 2 shadow, inset -2 -2 light` → raised `inset -1 -1 dark, inset 1 1 white, inset -2 -2 shadow, inset 2 2 light`; restore returns to pressed |
-| 2 | Minor | Menu accelerator underlines were decorative — Alt+F/G/V/H did nothing | `game.js` keydown handles `altKey` and opens the matching menu when no modal is open; verified all four open and Escape closes |
+| 2 | Minor | Menu accelerator underlines were decorative - Alt+F/G/V/H did nothing | `game.js` keydown handles `altKey` and opens the matching menu when no modal is open; verified all four open and Escape closes |
 | 3 | Minor | A modal dialog did not disable the window frame: File/Game/View/Help and the toolbar stayed clickable behind Controls/About/Quit/draft/welcome | `showDialog()`/`hideDialogs()` add/remove `.app.modal-open`; CSS makes menu bar and toolbar `pointer-events:none` and greys menu labels; verified real mouse clicks and Alt accelerators are blocked, in-dialog buttons still work, closing restores the frame |
 
 ### 10.2 Open defects
@@ -288,12 +288,12 @@ screenshots also exist in `win/shots/` (`wordfall-draft.png`, `wordfall-gameplay
 | Letters/Enter during draft inert; 1/2/3/R/S handled | PASS |
 | Reroll once per run; second R no-op | PASS |
 | Skip pays 50×wave, still +4 pressure, still counts as a draft | PASS |
-| Resize mid-run (1280×800 → 900×600 and back) | PASS — `groundY` stays 704, words kept, no error |
+| Resize mid-run (1280×800 → 900×600 and back) | PASS - `groundY` stays 704, words kept, no error |
 | localStorage best through reload / native restart | PASS |
-| Fake reaches the line | PASS — harmless |
-| All four Hexes / maxed cards / all-Boons state | PASS — eligibility 0 violations; 3 cards still shown via documented fallback |
-| Extreme HUD values (score 9,876,543, 12/12 wave, 3/3 shields, heat 6) | PASS — no panel hard-overflow at 1024/1280/1920 |
-| 12-card “Held:” line in draft at 1024×768 | PASS — fits; description grid fits with no dialog scrolling |
+| Fake reaches the line | PASS - harmless |
+| All four Hexes / maxed cards / all-Boons state | PASS - eligibility 0 violations; 3 cards still shown via documented fallback |
+| Extreme HUD values (score 9,876,543, 12/12 wave, 3/3 shields, heat 6) | PASS - no panel hard-overflow at 1024/1280/1920 |
+| 12-card “Held:” line in draft at 1024×768 | PASS - fits; description grid fits with no dialog scrolling |
 | 22+ real human-pace keypresses, 10 clears, key pick | PASS, no console/page errors |
 
 ## 12. Screenshot index
@@ -310,7 +310,7 @@ All under `%TEMP%\qa2-shots\` (final build unless noted):
 | `1024x768-embedded-*.png`, `1920x1080-embedded-*.png` | embedded (native viewport simulation) states; app fills viewport, desktop/taskbar hidden |
 | `1280x800-08-startmenu.png`, `1280x800-09-minimized-taskbar.png` | Start menu; **pre-fix** minimised taskbar-button evidence (kept for the defect history) |
 | `native-10-windowed.png`, `native-11-maximized.png`, `native-12-restored.png`, `native-13-dragged.png` | real native window capture (previous native build): borderless 1200×760, maximised 1920×1032, restored, dragged; title buttons at top right |
-| `crops/` | 2–4× nearest-neighbour crops used to inspect bevels, title-bar buttons, menu underlines, taskbar, status bar, dialogs |
+| `crops/` | 2-4× nearest-neighbour crops used to inspect bevels, title-bar buttons, menu underlines, taskbar, status bar, dialogs |
 
 ## 13. Artifacts and limitations
 
@@ -336,7 +336,7 @@ Limitations:
   was verified headless only (`--selftest`, `--smoke`), not by driving a visible window.
 - Native `--smoke` launched in place from the workspace path fails in this agent sandbox
   (`0x800700AA`, profile folder cannot be created; result file also unwritable) while the
-  identical published binaries pass from a temp copy — this is the documented environment
+  identical published binaries pass from a temp copy - this is the documented environment
   limitation, not a code defect.
 - The bot/`sim()` model assumes perfect reading/typing except for the configured mistake rate;
   human feel at the new fall speed is a tuning judgement for the Lead/user, not something a
@@ -346,7 +346,7 @@ Limitations:
 
 **Bottom line:** on `game.js` `463B7FCE93DEAEDFAE8E08EC42A2E032` / `style.css`
 `7D477C99773E4FCF592AFFD2C154E89B` and the native build `F296189F…` (17:07:55), Wordfall
-satisfies SPEC §7 M2–M5 with the retuned, roughly-2×-faster fall speed; the Win95 presentation
+satisfies SPEC §7 M2-M5 with the retuned, roughly-2×-faster fall speed; the Win95 presentation
 reads convincingly at all reviewed sizes and in the native shell; difficulty is provably
 independent of window size; the native exe embeds the final web files and passes its headless
 smoke test; and **no defects are open**. QA sign-off.

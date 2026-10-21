@@ -1,13 +1,13 @@
-# QA-REPORT-M6.md — independent acceptance review (Wordfall v1.1 / M6)
+# QA-REPORT-M6.md - independent acceptance review (Wordfall v1.1 / M6)
 
-Reviewer: `docs-qa` (independent verifier — not the author of `game.js`,
+Reviewer: `docs-qa` (independent verifier - not the author of `game.js`,
 `index.html`, `style.css`, `words.js`, `tools/` or `win/`).
 Date: 2026-10-21. Build: **v1.1 / M6, frozen**. Final status:
-**PASS — no open defects** on the build pinned below.
+**PASS - no open defects** on the build pinned below.
 
-This review covers the v1.1 feature set — pause, lifetime Records, run stats / seeds /
-Retry Seed, settings persistence, the 13th card **Split**, and the modal polish — plus a
-regression pass over M1–M5, the bot balance cells, the 1024×768 and 1280×800 Win95
+This review covers the v1.1 feature set - pause, lifetime Records, run stats / seeds /
+Retry Seed, settings persistence, the 13th card **Split**, and the modal polish - plus a
+regression pass over M1-M5, the bot balance cells, the 1024×768 and 1280×800 Win95
 presentation, and the native Windows build. The v1.0 review (`QA-REPORT.md`) is kept as a
 historical record and was not rewritten.
 
@@ -75,17 +75,17 @@ Probe details are kept as logs in `%TEMP%`:
 | **Pause** | `paused` phase; Esc pauses, Esc/Enter resume; board and playing clock freeze; dialog shows seed/time and Resume-Restart-Controls; Game menu label flips to Resume; Esc closes a menu instead of pausing; P types nothing while paused; not resumable by letters | **PASS** | smoke M6-pause block; my probe: phase `paused`, `#dlgPause.show`, seed line `Seed 31337 · 00:04 played`, Resume default, status/title "Paused", word `y` and `runSec` (3.8827 → 3.8827) unchanged over 800 ms, resume advanced `runSec` to 4.2995; Game menu reads Pause→Resume with `Esc`; Escape closed an open menu without pausing |
 | **Records** | `wordfall.records` loads at boot, saves exactly once per finished run, shows 7 fields, migrates `wordfall.best`, Records… in the Game menu | **PASS** | smoke round-trips the 7 fields (baseline 100/3/7/4/1/42/77 → after run 250/4/9/5/1/92/77) and asserts the persisted copy; my probe: dialog values equal `window.__wordfall.records`, OK closes and resumes; `shots/09-records.png` shows the populated table |
 | **Run stats + seed** | `stats()` `{keys, mistakes, runSec, wpm, accuracy}`; result line has wave/words/combo/WPM/accuracy/time/seed; `reset(seed)` deterministic; Retry Seed replays the seed; pause never advances `runSec` | **PASS** | smoke seed determinism (identical spawn sequences for the same seed, different for another), stats counts, result line, Retry Seed; my probe: game over line `Wave 1 · 1 word cleared · best combo 1 · 431 WPM · 100% accuracy · 00:00 · Seed 777`, Retry Seed keeps 777 and resets score/keys; Dawn line `Run won · 12 waves cleared · 129 words cleared · best combo 120 · 55 WPM · 100% accuracy · 02:50 · Seed 4242` |
-| **Split card** | 13th card, Hex/common/maxTier 2, tier I every 5th spawn / tier II every 3rd; real 3–5 letter word; scores and counts as a clear; no life at the line; blocks words above; bypasses `maxWords`; never fake; teal with dotted marker above; fifth Hex | **PASS** | smoke: cadence `[1,1,1,1,2,…]` / `[1,1,2,…]`, real harmless 3–5 letter extras, typeable + scores (score 30, 3 keys), line costs no life, queue 5→7, 0 fake extras in 12/60 split spawns, fifth Hex (`hexTotal` 5); my 1024×768 capture shows teal `beard` with the dotted marker above and toolbar "Split II" |
+| **Split card** | 13th card, Hex/common/maxTier 2, tier I every 5th spawn / tier II every 3rd; real 3-5 letter word; scores and counts as a clear; no life at the line; blocks words above; bypasses `maxWords`; never fake; teal with dotted marker above; fifth Hex | **PASS** | smoke: cadence `[1,1,1,1,2,…]` / `[1,1,2,…]`, real harmless 3-5 letter extras, typeable + scores (score 30, 3 keys), line costs no life, queue 5→7, 0 fake extras in 12/60 split spawns, fifth Hex (`hexTotal` 5); my 1024×768 capture shows teal `beard` with the dotted marker above and toolbar "Split II" |
 | **Settings** | `wordfall.settings` persists the sound toggle across launches | **PASS** | my probe: toggle → `{muted:true}` stored and menu "Sound: Off"; after a full page reload `state.muted` and the stored value are still true |
 | **13 cards / eligibility** | 13-card set and generic "all Hexes held" rule over 5 Hexes | **PASS** | smoke: exact 13-card table, 5 Hex ids incl `split`, `hexTotal === 5`, 1050 seeded drafts with 0 eligibility violations |
 | **Modal polish** | Title-bar buttons inert while a modal is open | **PASS** | my probe: a real mouse click on the greyed min button while the pause dialog is open does not minimise or change phase; §7 records a non-user-reachable nuance |
 
-## 3. Bot cells — M5 regression (measured)
+## 3. Bot cells - M5 regression (measured)
 
-| Cell | 400 seeds (block 1000–1399) | 100 seeds | SPEC M5 target | Result |
+| Cell | 400 seeds (block 1000-1399) | 100 seeds | SPEC M5 target | Result |
 | --- | --- | --- | --- | --- |
-| 60 WPM, no cards (`skip`) | dies **400/400**, median **6**, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies 100/100, median **6**, mean 6.23, `{6:78, 7:21, 8:1}` | dies at wave 5–7 | **PASS** |
-| 60 WPM, random picks | Dawn **37.3% (149/400)**, median wave 7.5 | Dawn **40.0% (40/100)**, median wave 9 | Dawn 30–50% | **PASS** |
+| 60 WPM, no cards (`skip`) | dies **400/400**, median **6**, mean 6.24, `{5:4, 6:299, 7:93, 8:4}` | dies 100/100, median **6**, mean 6.23, `{6:78, 7:21, 8:1}` | dies at wave 5-7 | **PASS** |
+| 60 WPM, random picks | Dawn **37.3% (149/400)**, median wave 7.5 | Dawn **40.0% (40/100)**, median wave 9 | Dawn 30-50% | **PASS** |
 | 80 WPM, random picks | Dawn **98.8% (395/400)** | Dawn **99.0% (99/100)** | Dawn > 70% | **PASS** |
 
 The 40 WPM informational cells remain 100% deaths at median wave 4 (not asserted). The M6
@@ -102,7 +102,7 @@ card mix shifts the random-pick numbers slightly from the M5 record (34.8% → 3
 - The pause dialog: title "Paused", `#pauseSeedLine` = `Seed <n> · MM:SS played`,
   `.pause-note` = "Words are frozen. Nothing falls until you resume.", buttons Resume
   (default), Restart Run, Controls… (`shots/08-pause.png`, my 1024×768 capture).
-- Status bar reads "Paused"; title/taskbar read "Wordfall — Paused".
+- Status bar reads "Paused"; title/taskbar read "Wordfall - Paused".
 - Game menu item reads "Pause" with the `Esc` shortcut span intact while playing and
   "Resume" while paused; it is disabled during the draft.
 - Controls… opened from the pause dialog returns to the pause dialog on close; backdrop
@@ -146,7 +146,7 @@ card mix shifts the random-pick numbers slightly from the M5 record (34.8% → 3
   eligibility rule is generic (`HEX_TOTAL`).
 - Tier I adds an extra word on every 5th successful spawn, tier II on every 3rd
   (`[1,1,1,1,2,…]` / `[1,1,2,…]`), driven by `state.spawnCount`.
-- The extra is drawn from the real word pool at 3–5 letters (`beard` 5, `hen` 3 in my
+- The extra is drawn from the real word pool at 3-5 letters (`beard` 5, `hen` 3 in my
   capture), marked `harmless:true`, never `fake:true`, never misspelled in the
   split-spawn sample.
 - It is typeable and scores (clear +1, score +30 for a 3-letter word, keys +3, no
@@ -154,7 +154,7 @@ card mix shifts the random-pick numbers slightly from the M5 record (34.8% → 3
 - At the danger line it is removed without losing a life (lives 1 → 1, phase stays
   playing).
 - It bypasses `maxWords` (queue 5 → 7) and is staged above the queue, so it blocks the
-  words above it while falling — the Hex's reading-time cost.
+  words above it while falling - the Hex's reading-time cost.
 - Visual: teal (`COL.splitWord '#00a0a0'`) with a dotted marker above the word; the
   1024×768 capture shows `beard` teal with its dotted rule, toolbar "Split II", Heat 2.
 
@@ -167,7 +167,7 @@ card mix shifts the random-pick numbers slightly from the M5 record (34.8% → 3
 
 ## 5. Presentation at 1024×768 and 1280×800
 
-- 1024×768 (smallest reviewed size): app window at 100,46–924,722; `scrollWidth/Height`
+- 1024×768 (smallest reviewed size): app window at 100,46-924,722; `scrollWidth/Height`
   = 1024/768 (no scrollbars); pause, Records, Controls and the Split playfield all fit.
 - 1280×800: `shots/08-pause.png` and `shots/09-records.png` inspected; both dialogs are
   centred, period-correct (2px bevels, Win95 grey, no gradients/rounded corners), with
@@ -196,19 +196,19 @@ the freeze and re-verified:
 
 Non-defect observations (no action required for the release):
 
-- **O1 — stats-line wrap.** At 1280×800 a 9-digit seed wraps the game-over/Dawn stat line
+- **O1 - stats-line wrap.** At 1280×800 a 9-digit seed wraps the game-over/Dawn stat line
   to a second line. The contract explicitly allows the `.stats` line to wrap; it still
   reads correctly and the dialog grows to fit.
-- **O2 — CSS-only modal inertness.** While `.app.modal-open`, real mouse clicks on the
+- **O2 - CSS-only modal inertness.** While `.app.modal-open`, real mouse clicks on the
   title-bar buttons are blocked (verified inert), but a programmatic `element.click()`
   still runs the handler. This is not reachable by a player and only matters to synthetic
   tests; a defensive `if (document.querySelector('.app.modal-open')) return` would close
   the gap if that is desired later.
-- **O3 — release packaging.** `dist/` is gitignored, so the GitHub release must attach the
+- **O3 - release packaging.** `dist/` is gitignored, so the GitHub release must attach the
   built `Wordfall-win64` folder rather than rely on the repo. At the start of this review
   no remote was configured; during the review the Lead added
   `origin https://github.com/Boci0/wordfall.git` and rebuilt `dist/` at 18:03:00. No tag
-  was present when this report was written — that is the Lead's release step, not a game
+  was present when this report was written - that is the Lead's release step, not a game
   defect.
 
 ## 8. Residual risks / not covered here

@@ -51,7 +51,7 @@
           <rect x="4" y="8" width="5" height="1" fill="#ffff00"/>
           <rect x="6" y="10" width="5" height="1" fill="#ffffff"/>
         </svg>
-        <span class="title-text" id="titleText">Wordfall — Untitled</span>
+        <span class="title-text" id="titleText">Wordfall - Untitled</span>
         <div class="title-buttons">
           <div class="title-btn min" id="btnMin" title="Minimize"><i></i></div>
           <div class="title-btn max" id="btnMax" title="Maximize"><i></i></div>
@@ -95,6 +95,7 @@
           <span class="menu-label"><u>H</u>elp</span>
           <div class="dropdown">
             <div class="drop-item" data-cmd="controls">Controls…</div>
+            <div class="drop-item" data-cmd="update" id="menuUpdate">Check for Updates…</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="about">About Wordfall…</div>
           </div>
@@ -219,7 +220,7 @@
                 <tr><td>Runs played</td><td class="rec-val" id="recRuns">0</td></tr>
                 <tr><td>Dawns reached</td><td class="rec-val" id="recDawns">0</td></tr>
                 <tr><td>Words cleared</td><td class="rec-val" id="recWords">0</td></tr>
-                <tr><td>Fastest Dawn</td><td class="rec-val" id="recFastest">—</td></tr>
+                <tr><td>Fastest Dawn</td><td class="rec-val" id="recFastest"> - </td></tr>
               </table>
               <p class="fine-print">Records are kept on this machine. Nothing leaves it.</p>
             </div>
@@ -247,7 +248,7 @@
             <div class="dialog-title"><span>Controls</span></div>
             <div class="dialog-body">
               <table class="key-table">
-                <tr><td class="key">A – Z</td><td>Type the target word</td></tr>
+                <tr><td class="key">A - Z</td><td>Type the target word</td></tr>
                 <tr><td class="key">Enter</td><td>Start · Retry · Continue after Dawn</td></tr>
                 <tr><td class="key">1 2 3</td><td>Draft: pick a card</td></tr>
                 <tr><td class="key">R</td><td>Draft: reroll the offer (once per run)</td></tr>
@@ -276,12 +277,13 @@
               </svg>
               <div>
                 <div class="about-head">Wordfall for Windows</div>
-                <div class="about-ver">Version 1.2 · 16-colour edition</div>
+                <div class="about-ver">Version 1.3 · 16-colour edition</div>
                 <p>Read. Commit. Survive.</p>
                 <p class="fine-print">Relay 12 is a night shift you cannot leave. The broadcast is coming apart one word at a time. Patch the receiver, keep the signal alive, and hold the line until Dawn.</p>
                 <p class="fine-print">Boons are clean patches. Gambits overclock the transmitter. Hexes are corrupted packets that slipped through.</p>
                 <p class="fine-print">A one-screen typing game with a draft-only roguelite layer.<br>
-                Keyboard required. No installer, no telemetry, no map, no branches.</p>
+                Keyboard required. No installer, no telemetry, no map, no branches.<br>
+                The desktop build checks GitHub for updates; no account and nothing else is sent.</p>
                 <p class="fine-print">Best score on this machine: <span id="aboutBest">0</span></p>
               </div>
             </div>
@@ -344,7 +346,7 @@
         <rect x="2" y="6" width="12" height="7" fill="#008080"/>
         <rect x="4" y="8" width="5" height="1" fill="#ffff00"/>
       </svg>
-      <span id="taskText">Wordfall — Untitled</span>
+      <span id="taskText">Wordfall - Untitled</span>
     </div>
     <div class="taskbar-spacer"></div>
     <div class="clock" id="clock">12:00 PM</div>
