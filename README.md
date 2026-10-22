@@ -5,17 +5,19 @@
 # Wordfall
 
 **A one-screen typing roguelite dressed as a 1995 Windows application.**<br>
-Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry.
+Read. Commit. Survive. Windows, Android and the browser. No account, no ads, no telemetry.
 
 [![Latest release](https://img.shields.io/github/v/release/Boci0/wordfall?style=flat-square&label=release&color=008080)](https://github.com/Boci0/wordfall/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Boci0/wordfall/total?style=flat-square&color=008080)](https://github.com/Boci0/wordfall/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20%2B%20browser-0078D6?style=flat-square&logo=windows&logoColor=white)](#download)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%2B%20Android%20%2B%20browser-0078D6?style=flat-square&logo=windows&logoColor=white)](#download)
 [![License](https://img.shields.io/badge/license-MIT-008080?style=flat-square)](LICENSE)
 [![Built with](https://img.shields.io/badge/built%20with-.NET%20%2B%20JavaScript-512BD4?style=flat-square&logo=dotnet&logoColor=white)](#build-from-source)
 
 <br>
 
 [![Download for Windows](https://img.shields.io/badge/Windows-Download%20the%20app-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Boci0/wordfall/releases/latest)
+&nbsp;
+[![Download for Android](https://img.shields.io/badge/Android-Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Boci0/wordfall/releases/latest)
 &nbsp;
 [![Play in browser](https://img.shields.io/badge/Browser-Play%20now-008080?style=for-the-badge&logo=googlechrome&logoColor=white)](https://boci0.github.io/wordfall/)
 
