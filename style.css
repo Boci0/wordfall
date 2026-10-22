@@ -548,6 +548,29 @@ body.phase-menu .strip-hud { opacity: 0; }
 .main-hint { margin: 0; font-size: 9px; color: #505050; }
 .main-hint b { color: var(--navy); }
 
+/* Optional seed: one field, so the seed printed on the result / pause screen is
+   something the player can actually act on. */
+.main-seed { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.main-seed .main-label { margin: 0; flex: 0 0 auto; }
+.seed-input {
+  width: 104px;
+  height: 21px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: #ffffff;
+  border: none;
+  outline: none;
+  box-shadow:
+    inset 1px 1px var(--shadow),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--dark),
+    inset -2px -2px var(--light);
+}
+.seed-input:focus { outline: 1px dotted var(--dark); outline-offset: -3px; }
+.main-seed-note { font-size: 9px; color: #505050; }
+
 .main-menu { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 
 .main-item {

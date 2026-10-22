@@ -6,7 +6,7 @@ namespace Wordfall;
 
 /// <summary>
 /// Automated verification mode (--smoke). The window is created offscreen, the page is
-/// loaded, window.__wordfall.version must reach M8, the Win95 UI must have switched to
+/// loaded, window.__wordfall.version must reach M9, the Win95 UI must have switched to
 /// embedded mode, and then a seeded scripted run is executed. The JSON result is written
 /// next to the exe (or --smoke-out=path) and the process exits 0 (pass) / 1 (fail).
 ///
@@ -71,21 +71,21 @@ internal sealed class SmokeRunner
             while (stopwatch.Elapsed < ReadyTimeout)
             {
                 version = await EvalStringAsync("(window.__wordfall && window.__wordfall.version) || null");
-                if (version == "M8") break;
+                if (version == "M9") break;
                 await Task.Delay(200);
             }
 
-            if (version != "M8")
+            if (version != "M9")
             {
                 string navigation = _lastNavigationError() is { } status
                     ? $" (last navigation error: {status})"
                     : string.Empty;
                 throw new TimeoutException(
-                    $"window.__wordfall.version never reached 'M8' within {ReadyTimeout.TotalSeconds:0}s " +
+                    $"window.__wordfall.version never reached 'M9' within {ReadyTimeout.TotalSeconds:0}s " +
                     $"(last value: {version ?? "null"}){navigation}");
             }
 
-            Heartbeat(_outPath, "game-ready version=M8");
+            Heartbeat(_outPath, "game-ready version=M9");
             hasWebViewBridge = await EvalBoolAsync("!!(window.chrome && window.chrome.webview)");
 
             // body.embedded is added once the page notices it runs inside WebView2; it may

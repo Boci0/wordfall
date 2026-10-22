@@ -199,7 +199,7 @@ dist\Wordfall-win64\Wordfall.exe --smoke --browser-args="--disable-gpu --no-sand
 `smoke-heartbeat.log` with startup stages, prints the JSON when a console is attached,
 and exits `0` (pass) / `1` (fail). It checks:
 
-- `window.__wordfall.version === 'M8'`,
+- `window.__wordfall.version === 'M9'`,
 - `document.body.classList.contains('embedded')` (the page detected WebView2),
 - `#titleText` starts with `Wordfall`,
 - `window.__wordfall.sim({wpm:60, mode:'skip', seed:1000})` executes and state can be read,

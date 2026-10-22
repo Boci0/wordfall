@@ -3,6 +3,33 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.6.0 - typing-speed balance and seed picker
+
+- **The balance curve is derived from typing speed.** Spawn intervals now come from an
+  explicit demand curve (`demandStart` 16 → `demandEnd` 92 WPM, exponent 1.82) instead of a
+  linear timer, and the curve is calibrated to real typist percentiles: wave 1 asks about the
+  10th percentile, wave 6 about the median typist, wave 12 roughly the top 1-2%. The old
+  curve ran 17 / 23 / 30 / 42 / 65 WPM through waves 1-5 and then flattened to a 78 WPM wall,
+  which made no-card runs fall off a cliff between 60 and 70 WPM. Before → after, 400 seeds:
+  40 WPM no cards median death wave 5 → 8; 50 WPM 6 → 10; 60 WPM 7 → 11; 60 WPM random Dawn
+  ~35-43% → **46.0%**; 80 WPM random Dawn 99%. The 70 WPM cells now sit at 28% (skip) and 92%
+  (random) - a smooth spread rather than a wall.
+- **Smoother fall-speed ramp.** `baseSpeed` 54, `speedPerClear` 0.43 and `maxSpeed` 120 keep
+  the fall speed climbing across all twelve waves instead of capping around wave 6-7. A word
+  crosses the 800-unit field in ~14.8 s at wave 1 and ~6.7 s at wave 12.
+- **The seed is now actionable.** The main screen has an optional seed field (digits only,
+  placeholder "random"); **Start Run** and Enter use it and then clear it. The Dawn dialog
+  gains **Retry Seed**, matching game over, so the seed shown on the result and pause screens
+  can always be replayed or typed in later. The Controls dialog documents the field.
+- **Tests** - `tools/smoke.mjs` is now **202 checks** including a new v1.6 section (seed field
+  and Dawn Retry Seed, a seed typed and started exactly, a strictly rising demand curve,
+  wave 1 ~16 / wave 6 33-45 / wave 12 ≥90 WPM, and no wave falling through the spawn floor);
+  200-202 checks pass depending on machine load (the suite is 202 checks); the only failures
+  are the known machine-sensitive M7 perf checks documented in QA-REPORT-V15.md. `tools/bot.mjs` asserts the new 40/60/80 sweep (40 skip always dies with median
+  7-9, 60 skip always dies with median 10-12, 60 random 30-50%, 80 random >70%) and passes.
+  `node tools/qa-v15.mjs` still passes 56/56. The debug hook is `version: 'M9'` and exports
+  `demandWpm()` alongside `spawnInterval()`.
+
 ## v1.5.0 - main screen, run clock, splits, achievements and difficulty
 
 - **A real main screen.** The game now opens on a full Win95 title screen instead of a small
@@ -188,5 +215,6 @@ All notable changes to Wordfall. Every release is also published on the
 - [x] v1.4 - juice pass: per-letter detonations, word comet trails, reactive equaliser, louder mechanical key sounds (the plasma/glitch look was replaced by the soft-focus renderer in v1.4.1)
 - [x] v1.4.1 - soft-focus renderer at 55% resolution, flare words, first updater-driven release
 - [x] v1.5 - run clock, wave splits + signal strip, fifteen achievements, three difficulty modes, Decoy readability fix
+- [x] v1.6 - typing-speed demand curve calibrated to real typist percentiles, smoother fall-speed ramp, main-screen seed field + Dawn Retry Seed
 - [x] Windows 95 presentation + native WinForms/WebView2 build
 - [x] Relay 12 background, draft log, trippy signal field + smoothed difficulty curve

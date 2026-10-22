@@ -23,15 +23,19 @@
     charH: 30,                // vertical footprint of one word
 
     // difficulty ramp - every one of these reads `pressure`, not raw clears.
-    // The ramp is deliberately spread across the whole run: the old curve hit the
-    // spawn floor and the first 4+ letter band on the same wave (wave 4), then
-    // stacked two more length jumps and the speed cap by wave 6.
+    // Demand curve: spawns are derived from a target typing speed instead of a
+    // linear timer. The targets come from real typing-speed data (median typist
+    // ~35-45 WPM; top 10% ~65-80): wave 1 asks ~16 WPM, wave 6 ~36 (around the
+    // median), wave 12 ~92 (top ~1-2% for Dawn). `demandCurve` > 1 keeps the
+    // early waves gentle and spends the difficulty in the last third, so
+    // progress tracks a player's real speed instead of hitting one flat wall.
     baseSpeed: 54,            // px/s at a 900px-tall viewport
-    speedPerClear: 0.60,
-    maxSpeed: 100,
-    spawnStart: 2.85,         // seconds between spawns at run start
-    spawnMin: 1.16,
-    spawnDecay: 0.031,
+    speedPerClear: 0.43,
+    maxSpeed: 120,
+    demandStart: 16,          // sustained WPM implied by spawn rate at wave 1
+    demandEnd: 92,            // ...at the start of wave 12 (the last full-pressure point)
+    demandCurve: 1.82,        // >1 = gentle start, steeper finish
+    spawnMin: 0.88,           // hard safety floor, never reached in a 12-wave run
     maxWords: 6,              // smaller queue, because words cross twice as fast
 
     // word-length ramp: [pressureThreshold, [shortest, longest]] from the top down.
@@ -989,8 +993,37 @@
     return CFG.wordRangeSteps[CFG.wordRangeSteps.length - 1][1];
   }
 
+  // Expected word length for the current band, weighted by the pool. The spawn
+  // interval is derived from it plus `demandWpm()`, so the board's ask is a
+  // typing speed rather than a timer.
+  function expectedWordLength() {
+    const [lo, hi] = wordRange();
+    let total = 0;
+    let count = 0;
+    for (let len = lo; len <= hi; len++) {
+      const bucket = WORD_BUCKETS.get(len);
+      if (!bucket) continue;
+      total += bucket.length * len;
+      count += bucket.length;
+    }
+    return count ? total / count : 5;
+  }
+
+  // The balance curve. x is how far through the 12-wave run the current
+  // pressure sits; the exponent keeps waves 1-5 gentle and spends most of the
+  // climb late. Matches real typist percentiles: ~16 WPM at wave 1 (anyone),
+  // ~36 at wave 6 (around the median), ~92 at wave 12 (roughly the top 2%).
+  function demandWpm() {
+    // Pressure at the start of the final wave: 11 waves of clears + 11 drafts.
+    // Normalising here means `demandEnd` is the actual wave-12 ask, not a value
+    // the run never reaches.
+    const span = (CFG.wavesPerRun - 1) * (CFG.waveSize + CFG.pressurePerDraft);
+    const x = clamp(pressure() / span, 0, 1);
+    return CFG.demandStart + (CFG.demandEnd - CFG.demandStart) * Math.pow(x, CFG.demandCurve);
+  }
+
   function spawnInterval() {
-    let t = Math.max(CFG.spawnMin, CFG.spawnStart - pressure() * CFG.spawnDecay);
+    let t = Math.max(CFG.spawnMin, (expectedWordLength() * 12) / demandWpm());
     // Drought buys reading time by stretching the queue; it is the Hex/Gambit
     // lane's survival option (spawn rate, not fall speed, is the strong lever).
     const drought = heldTier('drought');
@@ -2818,6 +2851,7 @@
     menuEffects: $('menuEffects'),
     deckField: $('deckField'),
     mainScreen: $('mainScreen'),
+    seedInput: $('seedInput'),
     mainMode: $('mainMode'),
     mainModeNote: $('mainModeNote'),
     mainBest: $('mainBest'),
@@ -3472,12 +3506,22 @@
     return true;
   }
 
+  // Optional seed on the main screen. Empty field = a fresh clock seed.
+  function seedFromInput() {
+    if (!ui.seedInput) return undefined;
+    const digits = String(ui.seedInput.value || '').replace(/\D+/g, '');
+    if (!digits) return undefined;
+    return Number(digits) >>> 0;
+  }
+
   function startNewRun(seed) {
     closeMenus();
     ui.startMenu.classList.remove('open');
     resumePhase = null;
     hideDialogs();
     ensureAudio();
+    // The field is a one-shot: after any start it goes back to "random".
+    if (ui.seedInput) ui.seedInput.value = '';
     reset(seed);
     syncUi(true);
   }
@@ -3707,7 +3751,14 @@
     });
 
     // dialogs
-    click('menuStart', startNewRun);
+    click('menuStart', () => startNewRun(seedFromInput()));
+    if (ui.seedInput) {
+      // Digits only; keep the value inside a sane seed length.
+      ui.seedInput.addEventListener('input', () => {
+        const digits = ui.seedInput.value.replace(/\D+/g, '').slice(0, 10);
+        if (digits !== ui.seedInput.value) ui.seedInput.value = digits;
+      });
+    }
     click('controlsOk', closeOverlay);
     click('aboutOk', closeOverlay);
     click('recordsOk', closeOverlay);
@@ -3755,6 +3806,7 @@
       continueEndless();
     });
     click('dawnNew', startNewRun);
+    click('dawnSeed', () => startNewRun(state.seed));
     ui.modalBackdrop.addEventListener('click', () => {
       if (isInfoOverlay()) closeOverlay();
     });
@@ -3987,6 +4039,11 @@
   window.addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey) return;
 
+    // Let the optional seed field edit itself; only its global keys (Enter, Esc,
+    // F2) fall through to the game hotkeys.
+    if (event.target === ui.seedInput &&
+        event.key !== 'Enter' && event.key !== 'Escape' && event.key !== 'F2') return;
+
     if (event.altKey) {
       // Win95 menu accelerators: Alt+F / Alt+G / Alt+V / Alt+H.
       const menu = { f: 'file', g: 'game', v: 'view', h: 'help' }[event.key.toLowerCase()];
@@ -4042,7 +4099,8 @@
     }
 
     if (event.key === 'Enter') {
-      if (state.phase === 'menu' || state.phase === 'gameover') reset();
+      if (state.phase === 'menu') startNewRun(seedFromInput());
+      else if (state.phase === 'gameover') reset();
       else if (state.phase === 'dawn') continueEndless();
       event.preventDefault();
       return;
@@ -4204,7 +4262,7 @@
   }
 
   window.__wordfall = {
-    version: 'M8',
+    version: 'M9',
     state,
     CFG,
     CARDS: CARD_LIST,
@@ -4270,6 +4328,7 @@
     speedMult,
     scoreMult,
     spawnInterval,
+    demandWpm,
     baseSpeedNow,
     rerollsLeft: () => state.rerollsLeft,
     nextChar,

@@ -2,10 +2,11 @@
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1-M7 implemented**, shipped as v1.3, presented as a Windows 95-era desktop
+Status: **M1-M7 implemented**, current build v1.6.0, presented as a Windows 95-era desktop
 application (browser and native Windows build), plus the Relay 12 background and curve
-smoothing in §11, the M7 impact/draft-balance pass in §12, and the native in-app updater in
-§13. M5 numbers, tuning notes and deviations are in §9; the M6 additions and their measured
+smoothing in §11, the M7 impact/draft-balance pass in §12, the native in-app updater in
+§13, the v1.5 score-attack pass in §14, and the v1.6 typing-speed curve and seed picker in
+§15. M5 numbers, tuning notes and deviations are in §9; the M6 additions and their measured
 numbers are in §10; M7 is in §12, with the measured card-power evidence in
 [BALANCE-LAB.md](BALANCE-LAB.md).
 
@@ -79,7 +80,9 @@ flowchart LR
   record best score. Headless tuning sweeps do not touch the record book.
 - **Settings:** `wordfall.settings` (`{muted}`) persists the sound toggle.
 - **Seeded runs:** `reset(seed?)` seeds the PRNG deterministically, so a seed reproduces
-  the same run. The headless bot drives runs through the same path.
+  the same run. The headless bot drives runs through the same path. Since v1.6 the main
+  screen also accepts an optional seed (digits only) for **Start Run** / Enter, so a seed
+  can be typed in as well as replayed with **Retry Seed** (§15.5).
 
 ## 3. Scoring
 
@@ -368,7 +371,7 @@ the web freeze: the published `dist\Wordfall-win64\` passes its own `--smoke` as
 contains the M6 strings). `dist/` is gitignored and regenerated, so a GitHub release must
 attach the built folder rather than rely on the repo.
 
-## 11. Relay 12 and curve smoothing (current build)
+## 11. Relay 12 and curve smoothing (the v1.2 curve; superseded by §15)
 
 **Problem.** Pressure was already linear, but the mapping from Pressure to difficulty was
 not. The old `wordRangeSteps` put the first 4+ band at pressure 36, the 5+ band at 48 and
@@ -726,3 +729,137 @@ same complaint.
 | `wordfall.splits` | `{split: [12], cum: [12]}` machine PBs |
 | `wordfall.achievements` | `{achievement_id: unix_ms}` |
 | `wordfall.settings` | `{muted, fx, difficulty}` |
+
+## 15. Implementation notes (v1.6 - typing-speed demand curve and seed picker)
+
+v1.6 replaces the linear spawn timer with a curve derived from a target typing speed, and
+makes the run seed something a player can enter, not only read. The internal debug version
+is `'M9'`. This section **supersedes the acceptance cells in §9, §11 and §12**; those
+sections stay as the historical record of the curves they measured.
+
+### 15.1 The problem - a linear timer with a flat wall
+
+The v1.5 curve was still a timer scaled by Pressure: spawn interval fell from
+`spawnStart 2.85` by `spawnDecay 0.031` per Pressure to a `spawnMin 1.16` floor, and fall
+speed was `baseSpeed 54 + 0.60 x Pressure` capped at `maxSpeed 100`. Bot sweeps at `skip`
+(no cards) measured the demand - the typing speed the board actually asks for - as:
+
+| Wave | 1 | 2 | 3 | 4 | 5 | 6-12 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Demand (WPM) | 17 | 23 | 30 | 42 | 65 | 78 (flat) |
+
+Waves 1-5 escalate gently and then the curve hits one wall: waves 6-12 all ask about the
+same 78 WPM while fall speed has already reached its cap. The result was a hard skill cliff
+in the acceptance cells: a 60 WPM no-card bot always died at wave 7, while 70 WPM Dawned
+42% and 80 WPM Dawned 100%. A player whose test speed sat just under the wall had no
+gradual route to the ending.
+
+### 15.2 The new demand curve
+
+`spawnInterval()` is now derived from an explicit demand curve, so the board asks for a
+typing speed instead of a gap. The curve and the speed ramp live in `CFG`:
+
+| Key | Value | Role |
+| --- | ---: | --- |
+| `baseSpeed` | 54 | fall speed at Pressure 0 |
+| `speedPerClear` | 0.43 | added fall speed per Pressure |
+| `maxSpeed` | 120 | fall-speed ceiling; reached only at the end of wave 12 |
+| `demandStart` | 16 | sustained WPM implied by spawn rate at wave 1 |
+| `demandEnd` | 92 | the ask at the start of wave 12, the last full-pressure point |
+| `demandCurve` | 1.82 | >1 keeps the early waves gentle and spends the climb late |
+| `spawnMin` | 0.88 | hard safety floor; never reached in a normal twelve-wave run |
+| `maxWords` | 6 | unchanged |
+| `wordRangeSteps` | unchanged | the word-length ramp is not part of this change |
+
+`demandWpm()` = `demandStart + (demandEnd - demandStart) x (pressure / 154) ^
+demandCurve`, where 154 is the Pressure at the start of wave 12: 11 waves of 10 clears plus
+11 drafts of +4 (`(12 - 1) x (10 + 4)`). Normalising at 154 makes `demandEnd` the actual
+wave-12 ask, rather than a value the run never reaches. `expectedWordLength()` is the
+pool-weighted mean length of the current word band; `spawnInterval()` is
+`expectedWordLength() x 12 / demandWpm()`, and the Drought card and difficulty multipliers
+apply on top. The spawn floor is now a safety rail only: every wave's interval stays above
+it, including wave 12 at ~0.98 s.
+
+| Wave | Demand (WPM) | Spawn interval (s) | Fall speed (px/s) | Crossing time (s) |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 16.0 | 3.07 | 54 | 14.8 |
+| 2 | 17.2 | 3.20 | 60 | 13.3 |
+| 3 | 20.1 | 2.97 | 66 | 12.1 |
+| 4 | 24.0 | 2.71 | 72 | 11.1 |
+| 5 | 28.7 | 2.65 | 78 | 10.3 |
+| 6 | 35.8 | 2.43 | 84 | 9.5 |
+| 7 | 41.2 | 2.11 | 90 | 8.9 |
+| 8 | 49.4 | 1.83 | 96 | 8.3 |
+| 9 | 59.0 | 1.53 | 102 | 7.8 |
+| 10 | 68.7 | 1.32 | 108 | 7.4 |
+| 11 | 79.9 | 1.13 | 114 | 7.0 |
+| 12 | 92.0 | 0.98 | 120 | 6.7 |
+
+The old `spawnStart` and `spawnDecay` keys are gone. The CFG-proxy rows in
+`tools/balance-lab.mjs` were ported to the demand keys (`demandStart` / `demandEnd` /
+`demandCurve` / `spawnMin`); the published card and draft numbers in
+[BALANCE-LAB.md](BALANCE-LAB.md) are the M7/v1.5 historical record and were not re-measured
+on the v1.6 curve.
+
+### 15.3 Calibration to real typists
+
+Two public datasets anchor the curve. Ratatype's analysis of 506,024 tests puts the median
+at 30-40 WPM, notes that 50-60 WPM is only about 1 in 11 typists, and puts 60-80 WPM in the
+top ~5%
+([ratatype.com](https://www.ratatype.com/typing-tips/3004-what-typing-speed-is-considered-good-real-data-from-506000-tests/)).
+TypingVerified's percentile chart puts the global median at 44-46 WPM, with 46-65 WPM
+spanning the 50th-75th percentile and 65-80 WPM the 75th-90th
+([typingverified.com](https://www.typingverified.com/blog/typing-speed-percentile-chart)).
+The shipped curve uses those bands directly: wave 1 asks ~16 WPM (about the 10th
+percentile, a tutorial-level start), wave 6 asks ~36 WPM (about the median typist), and
+wave 12 asks 92 WPM (roughly the top 1-2%, the Dawn target). A human loses about 10-15% of
+their test WPM in-game to reading, target switching and mistakes, so the bot's cells are an
+upper bound for a human of the same test speed.
+
+### 15.4 Measured acceptance cells
+
+All cells are 400 seeds; `skip` means no cards. The v1.6 columns are seed block 1000-1399
+and the independent block 5000-5399; a dash means that cell was not re-run on the
+independent block.
+
+| Cell | v1.5 (before) | v1.6 (block 1000) | v1.6 (block 5000) |
+| --- | --- | --- | --- |
+| 40 WPM, skip - median death wave | 5 | 8 | 8 |
+| 50 WPM, skip - median death wave | 6 | 10 | - |
+| 60 WPM, skip - median death wave | 7 | 11 | - |
+| 60 WPM, random - Dawn rate | ~35-43% | 46.0% | 47.0% |
+| 80 WPM, skip - Dawn rate | ~97-100% | 96% | 98% |
+| 80 WPM, random - Dawn rate | ~97-100% | 99% | 99% |
+
+The 40/50/60 skip cells all die 400/400. Other cells from the same validation: 20 WPM skip
+dies at wave 4; 30 skip wave 6, 30 random 7, 40 random 9, 50 random Dawn 9%; 70 WPM skip
+Dawn 28%, 70 random 92%. The spread is now monotonic in typing speed instead of one wall.
+
+The default `node tools/bot.mjs` sweep asserts the v1.6 cells: 40 WPM skip always dies with
+median death wave 7-9; 60 WPM skip always dies with median 10-12; 60 WPM random Dawn
+30-50%; 80 WPM random Dawn >70%. It passes. `node tools/qa-v15.mjs` still passes 56/56.
+
+### 15.5 Seed picker
+
+Before v1.6 the run seed was visible on the result and pause screens but could only be
+replayed through the game-over **Retry Seed** button; there was no way to enter one. Now:
+
+- the main screen has an optional seed field (`#seedInput`): digits only, placeholder
+  "random", with a note that a seed replays a shared run;
+- **Start Run** and Enter use the field and then clear it, so the next run starts fresh;
+- the Dawn dialog gained **Retry Seed** (`#dawnSeed`), matching game over, and the Controls
+  dialog gained a **Seed** row.
+
+The seed shown on the result and pause screens is therefore always actionable: it can be
+replayed directly at game over or Dawn, or typed in later on the main screen. The seed
+picker is presentation/UI only - it calls the existing `reset(seed)` path, so rules and
+determinism are unchanged.
+
+`tools/smoke.mjs` gained a "v1.6 seed picker + demand curve" section with five checks: the
+seed field and Dawn Retry Seed exist; typing a seed and pressing Start runs exactly that
+seed and clears the field; demand rises strictly on every wave; wave 1 is ~16 and wave 6 is
+33-45 and wave 12 is >=90 WPM; no wave falls through the hard spawn floor. The suite is now
+**202 checks**; 200-202 pass depending on machine load, and the only failures are the known
+machine-sensitive M7 perf checks already documented in
+[QA-REPORT-V15.md](QA-REPORT-V15.md) - not a v1.6 regression. The debug hook version is
+`'M9'` and exports `demandWpm` alongside `spawnInterval`.

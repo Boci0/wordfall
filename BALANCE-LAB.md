@@ -1,5 +1,11 @@
 # BALANCE-LAB - card power & draft economy for Wordfall M7
 
+> **v1.6 note.** The pressure-to-spawn mapping was replaced in v1.6 (demand-based
+> `spawnStart`/`spawnDecay` removed; `demandStart`/`demandEnd`/`demandCurve` added). The card
+> and draft numbers below are the M7 / v1.5 baseline kept as the historical record and were
+> **not** re-measured on the v1.6 curve. The `tools/balance-lab.mjs` CFG-proxy rows have been
+> ported to the new keys; see SPEC §15 for the v1.6 acceptance cells.
+
 **Measured build:** `game.js` sha256 `5255d14e2322…` (M7, 107,810 bytes, mtime 2026-10-21T19:07 local) for the
 baseline/card/offer/policy sweeps; the CFG proxy sweep was re-run on the pulseStatus-fixed build
 `f1b565e6054e…` (M7, 108,113 bytes) and reproduces the shipped row exactly (37.5% / 96.0%). The baseline was

@@ -51,13 +51,13 @@ const wf = (fn, arg) => page.evaluate(fn, arg);
 
 await page.goto(INDEX_URL);
 try {
-  await page.waitForFunction(() => window.__wordfall && window.__wordfall.version === 'M8', null, { timeout: waitSec * 1000 });
+  await page.waitForFunction(() => window.__wordfall && window.__wordfall.version === 'M9', null, { timeout: waitSec * 1000 });
 } catch (e) {
-  console.error('game.js never exposed version M8');
+  console.error('game.js never exposed version M9');
   await browser.close();
   process.exit(1);
 }
-log('game.js M8 is live — running v1.5 checks');
+log('game.js M9 is live — running v1.5 checks');
 
 const txt = (id) => wf((i) => { const el = document.getElementById(i); return el ? el.textContent : null; }, id);
 
@@ -97,7 +97,7 @@ const contract = await wf(() => {
     fmtSplit: typeof w.fmtSplit === 'function' ? w.fmtSplit(62.34) : null,
   };
 });
-check('contract: version is M8', contract.version === 'M8', contract.version, "'M8'");
+check('contract: version is M9', contract.version === 'M9', contract.version, "'M9'");
 check('contract: default difficulty is standard', contract.difficulty === 'standard', contract.difficulty, "'standard'");
 check('contract: split store and achievement table are exposed', contract.hasSplits && contract.hasAchievements, contract, 'both exposed');
 check('contract: fmtSplit prints mm:ss.t', contract.fmtSplit === '01:02.3', contract.fmtSplit, "'01:02.3'");
@@ -332,7 +332,7 @@ await sleep(100);
 // Unlocks survive a reload.
 await wf(() => window.__wordfall.setDifficulty('casual'));
 await page.reload();
-await page.waitForFunction(() => window.__wordfall && window.__wordfall.version === 'M8', null, { timeout: waitSec * 1000 });
+await page.waitForFunction(() => window.__wordfall && window.__wordfall.version === 'M9', null, { timeout: waitSec * 1000 });
 const reloaded = await wf(() => ({
   achieved: Object.keys(window.__wordfall.achieved),
   splits: window.__wordfall.splits.split.filter((v) => v > 0).length,

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Wordfall M8 balance bot (keeps the M5 acceptance cells on the v1.5 M8 build).
+ * Wordfall M9 balance bot (acceptance cells for the v1.6 typing-speed curve).
  *
  * Loads the real game in headless Chrome (playwright-core + installed Chrome),
  * then calls the in-page debug simulator `window.__wordfall.sim(...)` for a
  * sweep of WPM x draft-mode x seeds. Every run is synchronous inside the page,
  * so a whole sweep is fast and deterministic.
  *
- * SPEC.md M5 acceptance checked here:
- *   - 60 WPM, skip drafts (no cards): the bot ALWAYS dies; MEDIAN death wave 5-7.
+ * SPEC.md acceptance checked here:
+ *   - 40 WPM, skip drafts (no cards): the bot ALWAYS dies; MEDIAN death wave 7-9.
+ *   - 60 WPM, skip drafts (no cards): the bot ALWAYS dies; MEDIAN death wave 10-12.
  *   - 60 WPM, random drafts:            Dawn rate 30-50%.
  *   - 80 WPM, random drafts:            Dawn rate > 70%.
  *
@@ -17,10 +18,10 @@
  *   node tools/bot.mjs --seeds 200   # more seeds = steadier percentages
  *   node tools/bot.mjs --seed-base 5000 --seeds 100   # independent seed block
  *   node tools/bot.mjs --wpm 60,80 --json             # machine-readable only
- *   node tools/bot.mjs --wait-sec 60                  # shorten "wait for M8" window
+ *   node tools/bot.mjs --wait-sec 60                  # shorten "wait for M9" window
  *
  * Exits 0 when every assertion passes, 1 when any fails / the game never becomes
- * M8 / a sweep errors, 2 on bad CLI usage. Human-readable by default; --json
+ * M9 / a sweep errors, 2 on bad CLI usage. Human-readable by default; --json
  * prints only the JSON result on stdout (progress goes to stderr).
  */
 import { chromium } from 'playwright-core';
@@ -33,10 +34,10 @@ const ROOT = path.resolve(SCRIPT_DIR, '..');
 const INDEX_URL = pathToFileURL(path.join(ROOT, 'index.html')).href;
 
 const COMBO_TIMEOUT_MS = 120000; // a single (wpm, mode) sweep of N synchronous sims
-const RETRY_WAIT_MS = 20000;     // between "game.js is not M8 yet" reloads
+const RETRY_WAIT_MS = 20000;     // between "game.js is not M9 yet" reloads
 const MODES = ['skip', 'random'];
 
-const USAGE = `Wordfall M8 balance bot
+const USAGE = `Wordfall M9 balance bot
 
 Usage: node tools/bot.mjs [options]
 
@@ -46,7 +47,7 @@ Options:
   --seed-base N    first seed of the sweep (seeds are seed-base + 0..N-1);
                    default 1000. Use a different base to re-sample independently
   --max-sec N      per-run simulated time cap passed to sim(); default 1200
-  --wait-sec N     how long to wait for window.__wordfall.version === 'M8';
+  --wait-sec N     how long to wait for window.__wordfall.version === 'M9';
                    default 900 (15 min), retrying every 20 s
   --json           print only the machine-readable JSON result on stdout
   -h, --help       show this help
@@ -143,11 +144,11 @@ function median(values) {
 }
 
 /**
- * Open the game and wait until window.__wordfall.version === 'M8'.
+ * Open the game and wait until window.__wordfall.version === 'M9'.
  * Each attempt gets a fresh browser context so a concurrently rewritten
  * game.js / index.html / words.js is re-read from disk.
  */
-async function waitForM8(browser) {
+async function waitForM9(browser) {
   const deadline = Date.now() + opts.waitSec * 1000;
   let last = 'window.__wordfall missing';
   for (let attempt = 1; ; attempt++) {
@@ -162,8 +163,8 @@ async function waitForM8(browser) {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M8') {
-      say(`[bot] ${INDEX_URL} -> game.js version M8`);
+    if (version === 'M9') {
+      say(`[bot] ${INDEX_URL} -> game.js version M9`);
       return { context, page };
     }
     if (version) last = `version=${JSON.stringify(version)}`;
@@ -172,7 +173,7 @@ async function waitForM8(browser) {
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
       throw new Error(
-        `game.js never exposed window.__wordfall.version === 'M8' within ${opts.waitSec}s ` +
+        `game.js never exposed window.__wordfall.version === 'M9' within ${opts.waitSec}s ` +
         `(last: ${last}). The Lead may still be rewriting game.js; rerun with --wait-sec 900 or wait for the ready ping.`
       );
     }
@@ -285,6 +286,30 @@ function evaluateAssertions(combos, contractErrors) {
   };
 
   comboAssertion(
+    40,
+    'skip',
+    '40 WPM / skip: always dies (no cards)',
+    'death rate 100%',
+    (c) => ({
+      pass: c.runs > 0 && c.died === c.runs && c.dawn === 0,
+      actual: `death rate ${pct(c.deathRate)} (${c.died}/${c.runs}), dawn ${pct(c.dawnRate)} (${c.dawn})`,
+    })
+  );
+
+  comboAssertion(
+    40,
+    'skip',
+    '40 WPM / skip: median death wave 7-9',
+    'median in [7, 9]',
+    (c) => ({
+      pass: c.medianWave >= 7 && c.medianWave <= 9,
+      actual:
+        `median ${c.medianWave}, mean ${c.meanWave.toFixed(2)}, ` +
+        `distribution { ${formatHistogram(c.waveHistogram)} }`,
+    })
+  );
+
+  comboAssertion(
     60,
     'skip',
     '60 WPM / skip: always dies (no cards)',
@@ -298,10 +323,10 @@ function evaluateAssertions(combos, contractErrors) {
   comboAssertion(
     60,
     'skip',
-    '60 WPM / skip: median death wave 5-7',
-    'median in [5, 7]',
+    '60 WPM / skip: median death wave 10-12',
+    'median in [10, 12]',
     (c) => ({
-      pass: c.medianWave >= 5 && c.medianWave <= 7,
+      pass: c.medianWave >= 10 && c.medianWave <= 12,
       actual:
         `median ${c.medianWave}, mean ${c.meanWave.toFixed(2)}, ` +
         `distribution { ${formatHistogram(c.waveHistogram)} }`,
@@ -357,6 +382,8 @@ function printHuman(result, contractErrors) {
 
   const skip60 = result.combos.find((c) => c.wpm === 60 && c.mode === 'skip');
   if (skip60) console.log(`\n60 WPM / skip death-wave distribution: { ${formatHistogram(skip60.waveHistogram)} }`);
+  const skip40 = result.combos.find((c) => c.wpm === 40 && c.mode === 'skip');
+  if (skip40) console.log(`40 WPM / skip death-wave distribution: { ${formatHistogram(skip40.waveHistogram)} }`);
 
   console.log('\nASSERTIONS');
   let passed = 0;
@@ -387,7 +414,7 @@ let exitCode = 1;
 try {
   say('[bot] launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const { page } = await waitForM8(browser);
+  const { page } = await waitForM9(browser);
   const contractErrorsForThisRun = [];
 
   // A hung sim should not hang the whole script; closing the browser in the
@@ -409,7 +436,7 @@ try {
   const assertions = evaluateAssertions(combos, contractErrorsForThisRun);
   payload = {
     pass: assertions.every((a) => a.skipped || a.pass),
-    version: 'M8',
+    version: 'M9',
     config: { seeds: opts.seeds, seedBase: opts.seedBase, wpm: opts.wpm, modes: MODES, maxSec: opts.maxSec },
     combos,
     assertions,

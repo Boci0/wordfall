@@ -70,7 +70,10 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 - Pressure = clears + 4 × drafts taken; it drives word length, spawn rate and fall speed
 - Heat - one per Hex held - multiplies your score and keeps climbing
 - Combo, close calls and card multipliers stack
-- Every run has a seed, and **Retry Seed** replays the exact board
+- Spawns follow a demand curve calibrated to real typist percentiles, so the run asks for a
+  typing speed (~16 WPM at wave 1, ~92 at wave 12) instead of hitting one wall
+- Every run has a seed; type one on the main screen to replay a shared run, or use
+  **Retry Seed**
 
 </td>
 <td width="50%" valign="top">
@@ -175,6 +178,9 @@ falling out of the dead channel, and you have until Dawn to hold the line.
   anything, slot 3 a Hex or Gambit. Pick one, reroll once, or skip.
 - **Pressure never stops climbing.** It is `cleared + 4 × drafts taken`, and it sets word
   length, spawn rate and fall speed - so skipping does not dodge the difficulty.
+- **The curve asks for a typing speed.** Spawn intervals are derived from a demand curve
+  calibrated to real typist data: about 16 WPM at wave 1, the median typist around wave 6
+  and roughly the top 1-2% at wave 12. The climb is smooth instead of a single wall.
 - **Long words get a little more air.** Nine- and ten-letter words fall 8% slower, so the
   longest bands are tense rather than a death sentence; **Casual** slows the whole board.
 - **One Life, and Dawn at wave 12.** Shields absorb wrong keys, Lifeline absorbs a hit, and
@@ -184,6 +190,8 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 - **Fifteen achievements** track the run, from the first clear to a sub-five-minute
   Nightmare Dawn; they unlock with a notification and live in **Game → Achievements…**.
 - **Choose Casual, Standard or Nightmare** on the main screen or from **Game → Difficulty**.
+- **Bring a seed.** Every run has a seed; type one on the main screen to replay a shared run,
+  or use **Retry Seed** on the result or Dawn dialog.
 - **A keyboard is required.** The browser build and the native app play identically.
 
 ### Controls
@@ -285,7 +293,7 @@ diagnostics and the balance lab are documented in the
 | :--- | :--- |
 | [SPEC.md](SPEC.md) | The design doc: rules, cards, milestones and tuning targets |
 | [TECHNICAL.md](TECHNICAL.md) | Renderer, presentation, native shell, updater, test harnesses and tuning |
-| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.5.0 |
+| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.6.0 |
 | [BALANCE-LAB.md](BALANCE-LAB.md) | Measured card power, draft-offer distribution and tuning recommendations |
 | [QA-REPORT.md](QA-REPORT.md) · [QA-REPORT-M6.md](QA-REPORT-M6.md) · [QA-REPORT-M7.md](QA-REPORT-M7.md) · [QA-JUICE.md](QA-JUICE.md) | Independent acceptance reviews for each milestone |
 | [QA-REPORT-V15.md](QA-REPORT-V15.md) · [QA-DECOY.md](QA-DECOY.md) | v1.5 verification, and the decoy / "long words don't die" investigation |
@@ -299,5 +307,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.5.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.6.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>

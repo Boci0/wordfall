@@ -8,7 +8,7 @@
  *
  * Run from the wordfall/ folder:
  *   node tools/smoke.mjs
- *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M8" window
+ *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M9" window
  *
  * Prints a JSON summary on stdout; progress goes to stderr. Screenshots land in
  * shots/. Exits 0 only if every check passes and the page logged no errors.
@@ -68,7 +68,7 @@ function parseArgs(argv) {
         process.exit(2);
       }
     } else if (arg === '-h' || arg === '--help') {
-      console.log("Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === 'M8' (default 900).");
+      console.log("Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === 'M9' (default 900).");
       process.exit(0);
     } else {
       console.error(`smoke: unknown argument: ${arg}`);
@@ -96,7 +96,7 @@ async function waitForM7() {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M8') {
+    if (version === 'M9') {
       page = candidate;
       return;
     }
@@ -104,7 +104,7 @@ async function waitForM7() {
     else if (pageErrors.length) last = `no hook; pageerror: ${pageErrors[0]}`;
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
-      throw new Error(`game.js never exposed window.__wordfall.version === 'M8' within ${opts.waitSec}s (last: ${last})`);
+      throw new Error(`game.js never exposed window.__wordfall.version === 'M9' within ${opts.waitSec}s (last: ${last})`);
     }
     log(`game not ready (${last}); retrying in ${RETRY_WAIT_MS / 1000}s`);
     await sleep(RETRY_WAIT_MS);
@@ -269,11 +269,11 @@ async function domInfo() {
   });
 }
 
-/** Reload the page in the same context (localStorage survives) and wait for M8 again. */
+/** Reload the page in the same context (localStorage survives) and wait for M9 again. */
 async function reloadGame() {
   await page.reload({ waitUntil: 'load', timeout: 20000 });
   await page.waitForFunction(
-    () => window.__wordfall && window.__wordfall.version === 'M8',
+    () => window.__wordfall && window.__wordfall.version === 'M9',
     null,
     { timeout: 20000 }
   );
@@ -457,15 +457,15 @@ let summary = null;
 try {
   log('launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  log(`waiting for ${INDEX_URL} to expose version M8…`);
+  log(`waiting for ${INDEX_URL} to expose version M9…`);
   await waitForM7();
-  log('game.js M8 is live — running checks');
+  log('game.js M9 is live — running checks');
 
   page.on('pageerror', (e) => errors.push('pageerror: ' + String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
   const version = await wf(() => window.__wordfall.version);
-  check('contract: window.__wordfall.version === M8', version === 'M8', version, "'M8'");
+  check('contract: window.__wordfall.version === M9', version === 'M9', version, "'M9'");
 
   // ═══ M1: core loop ═════════════════════════════════════════════════════
   await section('M1 core loop', async () => {
@@ -2201,6 +2201,81 @@ try {
     notes.seed = { seed: over.seed, retried: retried.seed, stats: over.stats, text: over.text };
   });
 
+  // ═══ v1.6: seed picker + typing-speed demand curve ═══════════════════════
+  await section('v1.6 seed picker + demand curve', async () => {
+    await wf(() => window.__wordfall.returnToMenu());
+    await sleep(250);
+    const picker = await wf(() => ({
+      input: !!document.getElementById('seedInput'),
+      dawnSeed: !!document.getElementById('dawnSeed'),
+      dawnSeedText: String((document.getElementById('dawnSeed') || {}).textContent || '').trim(),
+    }));
+    check(
+      'v1.6 seed: the main screen offers a seed field and Dawn offers Retry Seed',
+      picker.input && picker.dawnSeed && /retry seed/i.test(picker.dawnSeedText),
+      picker,
+      '#seedInput on the main screen, #dawnSeed "Retry Seed"'
+    );
+
+    await wf(() => {
+      const el = document.getElementById('seedInput');
+      el.value = '123456789';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await wf(() => document.getElementById('menuStart').click());
+    await sleep(250);
+    const started = await wf(() => ({
+      phase: window.__wordfall.state.phase,
+      seed: window.__wordfall.state.seed,
+      input: String((document.getElementById('seedInput') || {}).value || ''),
+    }));
+    check(
+      'v1.6 seed: typing a seed and pressing Start runs exactly that seed',
+      started.phase === 'playing' && started.seed === 123456789 && started.input === '',
+      started,
+      'phase playing, state.seed 123456789, field cleared'
+    );
+
+    const curve = await wf(() => {
+      const w = window.__wordfall;
+      const s = w.state;
+      const rows = [];
+      for (let wave = 1; wave <= 12; wave++) {
+        s.words.length = 0;
+        s.cleared = 10 * (wave - 1);
+        s.draftsTaken = wave - 1;
+        s.wave = wave;
+        rows.push({
+          wave,
+          demand: Number(w.demandWpm().toFixed(1)),
+          interval: Number(w.spawnInterval().toFixed(3)),
+        });
+      }
+      return { rows, spawnMin: w.CFG.spawnMin, demandStart: w.CFG.demandStart };
+    });
+    const demands = curve.rows.map((r) => r.demand);
+    check(
+      'v1.6 curve: the required typing speed rises on every wave',
+      demands.every((d, i) => i === 0 || d > demands[i - 1]),
+      demands,
+      'strictly increasing WPM from wave 1 to 12'
+    );
+    check(
+      'v1.6 curve: wave 1 is an anyone-can-start demand and wave 12 is elite',
+      Math.abs(demands[0] - curve.demandStart) < 1 && demands[11] >= 90 && demands[5] >= 33 && demands[5] <= 45,
+      { wave1: demands[0], wave6: demands[5], wave12: demands[11] },
+      'wave1 ~16 WPM, wave6 33-45 WPM, wave12 >= 90 WPM'
+    );
+    check(
+      'v1.6 curve: the 12-wave run never falls through to the hard spawn floor',
+      curve.rows.every((r) => r.interval > curve.spawnMin),
+      curve.rows.map((r) => r.interval),
+      'all 12 waves spawn above CFG.spawnMin'
+    );
+    notes.curve = { demands, intervals: curve.rows.map((r) => r.interval) };
+    await wf(() => window.__wordfall.returnToMenu());
+  });
+
   // ═══ M6: Split card ═════════════════════════════════════════════════════
   await section('M6 Split', async () => {
     const seqs = await wf(() => {
@@ -2708,7 +2783,7 @@ try {
     check(
       'M7 FX toggle: the light setting survives a page reload',
       persisted.quality === 'light' && persisted.fxLight && persisted.menu === 'Effects: Light' &&
-      persisted.stored && persisted.stored.fx === 'light' && persisted.version === 'M8',
+      persisted.stored && persisted.stored.fx === 'light' && persisted.version === 'M9',
       persisted,
       'boots into light FX from localStorage'
     );
@@ -2933,7 +3008,7 @@ try {
 const passed = checks.filter((c) => c.pass).length;
 summary = {
   pass: checks.every((c) => c.pass),
-  version: 'M8',
+  version: 'M9',
   checks,
   failed: checks.filter((c) => !c.pass).map((c) => c.name),
   consoleErrors: errors,
