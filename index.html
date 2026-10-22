@@ -81,6 +81,7 @@
             <div class="drop-item" data-cmd="splits" id="menuSplits">Splits…</div>
             <div class="drop-item" data-cmd="achievements" id="menuAchievements">Achievements…</div>
             <div class="drop-item" data-cmd="difficulty" id="menuDifficulty">Difficulty: Standard</div>
+            <div class="drop-item" data-cmd="custom" id="menuCustom">Custom Stage&hellip;</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="new">Restart Run<span class="shortcut">F2</span></div>
           </div>
@@ -164,7 +165,7 @@
           <div class="main-panel">
             <div class="main-titlebar">
               <span>Wordfall 95 · Relay 12</span>
-              <span class="main-version" id="mainVersion">v1.6.0</span>
+              <span class="main-version" id="mainVersion">v1.7.0</span>
             </div>
             <div class="main-body">
               <div class="main-hero">
@@ -216,6 +217,7 @@
                 <button type="button" tabindex="-1" class="main-item" data-cmd="records"><span class="main-item-label">Records&hellip;</span><span class="main-item-note">lifetime bests</span></button>
                 <button type="button" tabindex="-1" class="main-item" data-cmd="splits"><span class="main-item-label">Splits&hellip;</span><span class="main-item-note">wave PBs</span></button>
                 <button type="button" tabindex="-1" class="main-item" data-cmd="achievements"><span class="main-item-label">Achievements&hellip;</span><span class="main-item-note" id="mainAchCount">0 / 15</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="custom"><span class="main-item-label">Custom Stage&hellip;</span><span class="main-item-note">your own text</span></button>
                 <button type="button" tabindex="-1" class="main-item" data-cmd="controls"><span class="main-item-label">Controls&hellip;</span><span class="main-item-note">how to play</span></button>
                 <button type="button" tabindex="-1" class="main-item" data-cmd="about"><span class="main-item-label">About&hellip;</span><span class="main-item-note">credits</span></button>
                 <button type="button" tabindex="-1" class="main-item" data-cmd="quit"><span class="main-item-label">Quit</span><span class="main-item-note">close Wordfall</span></button>
@@ -229,7 +231,7 @@
             </div>
             <div class="main-footer">
               <span id="mainHint">Relay 12 &middot; 03:00 &middot; the channel is open</span>
-              <span id="mainFooterRight">Wordfall 1.6.0 &middot; MIT licence</span>
+              <span id="mainFooterRight">Wordfall 1.7.0 &middot; MIT licence</span>
             </div>
           </div>
         </div>
@@ -351,6 +353,61 @@
             </div>
           </div>
 
+          <!-- Custom stage: Stage Complete -->
+          <div class="dialog dlg-message" id="dlgCustomDone">
+            <div class="dialog-title"><span>Stage Complete</span></div>
+            <div class="dialog-body">
+              <div class="big-score dawn-score" id="customResultTime">0:00</div>
+              <div class="stats" id="customResultStats"></div>
+              <div class="held-line" id="customResultName"></div>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="customAgain">Again</button>
+              <button type="button" tabindex="-1" class="btn" id="customEdit">Edit Text</button>
+              <button type="button" tabindex="-1" class="btn" id="customResultMenu">Main Menu</button>
+            </div>
+          </div>
+
+          <!-- Custom stage: text editor -->
+          <div class="dialog dlg-custom" id="dlgCustom">
+            <div class="dialog-title"><span>Custom Stage</span></div>
+            <div class="dialog-body">
+              <div class="custom-field">
+                <label class="main-label" for="customName">STAGE NAME</label>
+                <input class="custom-name" id="customName" type="text" maxlength="40" placeholder="Untitled stage" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="custom-text-head">
+                <label class="main-label" for="customText">YOUR TEXT</label>
+                <button type="button" tabindex="-1" class="btn custom-clean" id="customCleanBtn" title="Strip links, URLs, citation markers like [b] or [1], and wiki clutter">Clean text</button>
+              </div>
+              <textarea class="custom-text" id="customText" spellcheck="false" placeholder="Paste or type anything: a poem, lyrics, vocabulary, a speech&hellip;"></textarea>
+              <div class="custom-options">
+                <div class="custom-option">
+                  <span class="main-label">LAYOUT</span>
+                  <div class="mode-row" id="customLayout">
+                    <button type="button" tabindex="-1" class="mode-btn" data-layout="lines">Lines</button>
+                    <button type="button" tabindex="-1" class="mode-btn" data-layout="words">Falling words</button>
+                  </div>
+                </div>
+                <div class="custom-option custom-checks">
+                  <label class="custom-check"><input type="checkbox" id="customMemorize" /> Memorize</label>
+                  <label class="custom-check"><input type="checkbox" id="customLoop" /> Loop</label>
+                  <label class="custom-check"><input type="checkbox" id="customClean" checked /> Clean on start</label>
+                </div>
+              </div>
+              <div class="custom-meta" id="customMeta">Paste some text to begin.</div>
+              <div class="custom-saved" id="customSaved" aria-label="Saved stages"></div>
+              <p class="fine-print" id="customHint">Practice stage: no cards, no lives. Completing the text shows your time, speed and accuracy.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn" id="customNew">New</button>
+              <button type="button" tabindex="-1" class="btn" id="customDelete">Delete</button>
+              <button type="button" tabindex="-1" class="btn" id="customSave">Save</button>
+              <button type="button" tabindex="-1" class="btn" id="customCancel">Cancel</button>
+              <button type="button" tabindex="-1" class="btn default" id="customStart">Start</button>
+            </div>
+          </div>
+
           <!-- Controls -->
           <div class="dialog dlg-help" id="dlgControls">
             <div class="dialog-title"><span>Controls</span></div>
@@ -367,6 +424,7 @@
                 <tr><td class="key">Mode</td><td>Game → Difficulty cycles Casual / Standard / Nightmare for the next run</td></tr>
                 <tr><td class="key">Time</td><td>The status bar carries the run clock; every wave stamps a split</td></tr>
                 <tr><td class="key">View</td><td>Effects: Full / Light (rendering quality)</td></tr>
+                <tr><td class="key">Custom</td><td>Game &rarr; Custom Stage&hellip; turns pasted text into a practice stage: lines to type, or falling words.</td></tr>
               </table>
               <p class="fine-print">Words closest to the line may only be typed in order. A wrong key resets the combo.</p>
             </div>
@@ -388,7 +446,7 @@
               </svg>
               <div>
                 <div class="about-head">Wordfall for Windows</div>
-                <div class="about-ver">Version 1.6.0 · typing-speed edition</div>
+                <div class="about-ver">Version 1.7.0 · custom stages edition</div>
                 <p>Read. Commit. Survive.</p>
                 <p class="fine-print">Relay 12 is a night shift you cannot leave. The broadcast is coming apart one word at a time, and the picture is going with it. Patch the receiver, keep the signal alive, and hold the line until Dawn.</p>
                 <p class="fine-print">Boons are clean patches. Gambits overclock the transmitter. Hexes are corrupted packets that slipped through.</p>

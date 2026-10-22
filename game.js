@@ -97,6 +97,26 @@
     flareSpeedMult: 2.5,
   };
 
+  // ─── Custom stages ────────────────────────────────────────────────────────
+  // A practice mode built from pasted text: no cards, no lives, no pressure.
+  // `lines` turns the text into single-row segments typed in full (spaces and
+  // punctuation included); `words` drops the text's words as ordinary falling
+  // targets that must all be cleared. Completion is the win; the clock and the
+  // accuracy readout are the score.
+  const CUSTOM = {
+    maxTextChars: 12000,      // localStorage + layout sanity cap
+    maxLines: 400,            // segments of one pasted text
+    maxTokens: 600,           // falling-words instances
+    maxTokenLen: 16,
+    maxStages: 20,
+    previewSec: 3.5,          // Memorize: how long a fresh line stays visible
+    practiceSpeed: 42,        // px/s, fixed and gentle (no pressure ramp)
+    practiceSpawn: 1.45,      // seconds between falling words
+    practiceMaxWords: 6,
+    nextLineGap: 0.34,        // beat between a cleared line and the next one
+    minSegChars: 16,
+  };
+
   // ─── Difficulty ───────────────────────────────────────────────────────────
   // Difficulty is a survivability dial, not a scoring one: the record book and
   // the achievements are shared, so the numbers on screen stay comparable. A
@@ -345,6 +365,14 @@
     ctx = out;
 
     state.groundY = H - CFG.groundPad;
+
+    // A practice line is positioned from W, so re-centre it when the window
+    // changes mid-stage (the segment itself stays the same length).
+    if (state.custom && state.custom.layout === 'lines' && state.custom.liveLine) {
+      const line = state.custom.liveLine;
+      line.x = Math.max(CFG.pad, Math.min((W - line.w) / 2, W - CFG.pad - line.w));
+      line.y = customLineY();
+    }
   }
 
   // Seeded RNG for gameplay randomness (spawns, drafts, decoys, particles).
@@ -442,6 +470,7 @@
     spawnCount: 0,            // successful spawns (drives the Split card)
     lifelineUsed: false,      // Lifeline saves exactly one life per run
     runRecorded: false,
+    custom: null,             // active custom-stage state (practice mode)
   };
 
   Object.defineProperties(state, {
@@ -578,6 +607,8 @@
     state.runRecorded = true;
     // Headless sim sweeps are tuning runs, not the player's record book.
     if (state.simulating) return;
+    // Custom practice never touches the roguelite record book or achievements.
+    if (state.custom) return;
     records.runs += 1;
     if (won) {
       records.dawns += 1;
@@ -681,6 +712,8 @@
 
   function evaluateAchievements() {
     if (state.simulating) return;
+    // Practice stages are not part of the roguelite record book.
+    if (state.custom) return;
     for (const a of ACHIEVEMENTS) {
       if (achieved[a.id]) continue;
       let ok = false;
@@ -802,6 +835,7 @@
     state.spawnCount = 0;
     state.lifelineUsed = false;
     state.runRecorded = false;
+    state.custom = null;
     nextId = 1;
   }
 
@@ -1075,8 +1109,15 @@
   }
 
   function spawnWord(text, opts = {}) {
-    text = String(text || '').toLowerCase();
-    if (!/^[a-z]{1,20}$/.test(text)) return null;
+    // Custom practice lines keep their case, spaces and punctuation; the
+    // roguelite pool is lowercase single words only, exactly as before.
+    const raw = String(text == null ? '' : text);
+    text = state.custom ? raw.replace(/\s+/g, ' ').trim() : raw.toLowerCase();
+    if (state.custom) {
+      if (!/^[\x20-\x7e]{1,160}$/.test(text)) return null;
+    } else if (!/^[a-z]{1,20}$/.test(text)) {
+      return null;
+    }
     const w = charW * text.length;
     const maxX = Math.max(CFG.pad, W - CFG.pad - w);
     const x = opts.x != null ? opts.x : CFG.pad + rng() * Math.max(0, maxX - CFG.pad);
@@ -1568,6 +1609,13 @@
       pulseStatus('combo');
     }
 
+    // Practice stages replace the roguelite bookkeeping entirely: no waves, no
+    // draft, no achievements, no record book. Advancing the text is the rule.
+    if (state.custom) {
+      onCustomCleared(word);
+      return;
+    }
+
     evaluateAchievements();
 
     const every = autoClearEvery();
@@ -1838,8 +1886,15 @@
   // ─── Typing rules ─────────────────────────────────────────────────────────
   function typeLetter(ch) {
     if (state.phase !== 'playing' || state.waveClearT > 0) return;
-    ch = String(ch || '').toLowerCase();
-    if (!/^[a-z]$/.test(ch)) return;
+    const custom = state.custom;
+    ch = String(ch == null ? '' : ch).toLowerCase();
+    // Practice lines accept the whole printable row (spaces, punctuation and
+    // capitals); every other mode stays letters-only.
+    if (custom && custom.layout === 'lines') {
+      if (!/^[\x20-\x7e]$/.test(ch)) return;
+    } else if (!/^[a-z]$/.test(ch)) {
+      return;
+    }
 
     const set = targetSet();
     if (!set.length) return;
@@ -1850,16 +1905,23 @@
     } else {
       const reals = set.filter((w) => !w.fake);
       if (!reals.length) { mistake(); return; }          // a fake is the lowest word
-      const matches = reals.filter((w) => nextChar(w) === ch);
+      const matches = reals.filter((w) => {
+        const expected = nextChar(w);
+        return expected != null && expected.toLowerCase() === ch;
+      });
       if (!matches.length) { mistake(); return; }
       matches.sort((a, b) => b.y - a.y);                 // ties go to the lowest word
       word = matches[0];
     }
 
-    if (nextChar(word) === ch) {
+    const expected = nextChar(word);
+    if (expected != null && ch === expected.toLowerCase()) {
       state.lockWord = word;                             // lock-on: holds until this word is cleared
       word.progress += 1;
       state.keys += 1;
+      // Memorize: the first committed key hides the rest of the line, so the
+      // player is reading the words back from memory from here on.
+      if (custom && custom.layout === 'lines' && custom.memorize && !custom.hidden) customHideLine();
       word.typedAt[word.progress - 1] = state.t;
       if (word.progress >= word.text.length) {
         clearWord(word, false);
@@ -1925,6 +1987,8 @@
   }
 
   function hitGround(word) {
+    // Custom practice: a missed target is recycled, never a lost life.
+    if (state.custom) { customMiss(word); return; }
     removeWord(word);
     if (word.fake) return;                               // fakes fall through harmlessly
     if (word.harmless) {
@@ -1993,6 +2057,510 @@
     recordRun(false);
   }
 
+  // ─── Custom stages: storage, content prep and practice rules ─────────────
+  // A custom stage is deliberately outside the roguelite: reset() clears
+  // `state.custom`, the standard wave/draft/pressure code never runs, and the
+  // record book and achievements are skipped. What remains is the typed text,
+  // the clock and the accuracy — the whole point of a memorization drill.
+  const CUSTOM_KEY = 'wordfall.custom.stages';
+  const CUSTOM_LAST_KEY = 'wordfall.custom.last';
+  let customStages = [];
+  let customLast = null;          // last started config, used to prefill the dialog
+  let customEditingId = null;     // id of the saved stage currently loaded in the dialog
+
+  // Keep only printable ASCII plus newlines; collapse runs so a pasted PDF
+  // does not turn into a wall of tabs and non-breaking spaces.
+  function customNormaliseText(raw) {
+    let text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
+    text = text.replace(/[\t\f\v]/g, ' ');
+    // Anything outside printable ASCII becomes a space rather than vanishing,
+    // so "word—word" and curly quotes keep their word boundaries.
+    text = text.replace(/[^\n\x20-\x7e]/g, ' ');
+    text = text.replace(/ {2,}/g, ' ');
+    return text.slice(0, CUSTOM.maxTextChars);
+  }
+
+  function customRawLines(text) {
+    return customNormaliseText(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  }
+
+  // ─── Smart text cleanup ───────────────────────────────────────────────────
+  // Web pastes arrive full of things that are noise in a typing drill: citation
+  // markers ("World War II[b]", "...[12]"), bare URLs, Markdown or HTML link
+  // syntax, and the chrome a whole-page copy drags in. The cleaner strips those
+  // and reports what it removed, so the editor can show the receipt.
+  const WIKI_CHROME = new Set([
+    'jump to content', 'main page', 'contents', 'current events', 'random article',
+    'about wikipedia', 'contact us', 'donate', 'contribute', 'help', 'learn to edit',
+    'community portal', 'recent changes', 'upload file', 'tools', 'what links here',
+    'related changes', 'special pages', 'permanent link', 'page information',
+    'cite this page', 'get shortened url', 'download qr code', 'wikidata item',
+    'download as pdf', 'printable version', 'in other projects', 'languages', 'search',
+    'create account', 'log in', 'personal tools', 'toggle the table of contents',
+    'toggle the contents', 'appearance', 'main menu', 'navigation', 'move to sidebar',
+    'from wikipedia, the free encyclopedia', 'privacy policy', 'disclaimers',
+    'code of conduct', 'developers', 'statistics', 'cookie statement', 'mobile view',
+    'wikimedia foundation', 'powered by mediawiki',
+    // Section headings that survive as bare lines once the markers are gone.
+    'references', 'external links', 'see also', 'further reading', 'notes', 'citations',
+    'sources', 'bibliography', 'works cited', 'general references', 'notes and references',
+  ]);
+
+  function decodeCustomEntities(text) {
+    return text
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#0*39;|&apos;/gi, "'")
+      .replace(/&mdash;|&ndash;/gi, '-')
+      .replace(/&#x([0-9a-f]+);/gi, (m, hex) => {
+        const code = parseInt(hex, 16);
+        return code >= 32 && code <= 126 ? String.fromCharCode(code) : ' ';
+      })
+      .replace(/&#(\d+);/g, (m, dec) => {
+        const code = Number(dec);
+        return code >= 32 && code <= 126 ? String.fromCharCode(code) : ' ';
+      });
+  }
+
+  function customCleanText(raw) {
+    const stats = { citations: 0, links: 0, urls: 0, markup: 0, chrome: 0, references: 0 };
+    let text = String(raw == null ? '' : raw);
+
+    // 1. Real HTML, if rendered markup was pasted in.
+    text = text.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, () => { stats.markup++; return ' '; });
+    text = text.replace(/<img\b[^>]*>/gi, () => { stats.markup++; return ' '; });
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    text = text.replace(/<\/(?:p|div|li|h[1-6]|tr|blockquote|section|td|th)\s*>/gi, '\n');
+    text = text.replace(/<a\b[^>]*>/gi, () => { stats.links++; return ''; });
+    text = text.replace(/<\/?[a-z][^>]*>/gi, () => { stats.markup++; return ''; });
+    text = decodeCustomEntities(text);
+
+    // 2. Markdown images and links: keep the label, drop the target.
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, () => { stats.links++; return ' '; });
+    text = text.replace(/\[([^\]]{1,160})\]\([^)]+\)/g, (m, label) => { stats.links++; return label; });
+    text = text.replace(/\[([^\]]{1,160})\]\[[^\]]*\]/g, (m, label) => { stats.links++; return label; });
+
+    // 3. Bare URLs, plus the empty parentheses they leave behind.
+    text = text.replace(/\b(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>"')\]]+/gi, () => { stats.urls++; return ' '; });
+    text = text.replace(/\(\s*\)/g, ' ');
+
+    // 4. Citation markers: [1] [b] [note 3] [nb 1] [citation needed] [edit] ...
+    const marker = /\[\s*(?:\d{1,3}|[a-z]|note\s*\d{1,2}|nb\s*\d{1,2}|citation needed|edit|update|sic|clarification needed|dubious|according to whom\?|who\?|when\?|where\?|why\?|how\?|not verified in body|page needed|need quotation to verify|failed verification|better source needed|original research\?)\s*\]/gi;
+    text = text.replace(marker, () => { stats.citations++; return ''; });
+    // MediaWiki residue that is not bracketed.
+    text = text.replace(/\s*\((?:listen|help·info|info)\)/gi, () => { stats.citations++; return ''; });
+
+    // 5. Markdown emphasis, headings and list markers.
+    text = text.replace(/^#{1,6}\s+/gm, () => { stats.markup++; return ''; });
+    text = text.replace(/(\*\*|__)(.+?)\1/g, (m, mark, inner) => { stats.markup++; return inner; });
+    text = text.replace(/\*([^*\n]+?)\*/g, (m, inner) => { stats.markup++; return inner; });
+    text = text.replace(/`([^`\n]*)`/g, (m, inner) => { stats.markup++; return inner; });
+    text = text.replace(/^\s{0,4}(?:[-*•]|\d{1,3}[.)])\s+/gm, () => { stats.markup++; return ''; });
+
+    // 6. Wikipedia chrome and the reference tail. Only when the paste really
+    //    looks like a wiki copy, so an ordinary article keeps its own lines.
+    const lookedLikeWiki = stats.citations > 0 || /\bWikipedia\b/.test(text);
+    if (lookedLikeWiki) {
+      const kept = [];
+      for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        const key = trimmed.toLowerCase();
+        if (key && (WIKI_CHROME.has(key) ||
+            /^retrieved from\b/.test(key) ||
+            /^this page was last edited on\b/.test(key) ||
+            /^text is available under the creative commons\b/.test(key) ||
+            /^wikimedia foundation\b/.test(key))) {
+          stats.chrome++;
+          continue;
+        }
+        if (/^\^\s/.test(trimmed)) { stats.references++; continue; }
+        kept.push(line);
+      }
+      text = kept.join('\n');
+    }
+
+    // 7. Tidy the gaps the removals left behind.
+    text = text.replace(/[ \t]+([,.;:!?])/g, '$1');
+    text = text.replace(/[ \t]{2,}/g, ' ');
+    text = text.replace(/[ \t]+\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+    const removed = stats.citations + stats.links + stats.urls + stats.markup + stats.chrome + stats.references;
+    return { text, stats, removed };
+  }
+
+  // One segment is one target: a single row of monospace glyphs typed in full,
+  // spaces and punctuation included. Long pasted lines wrap at word boundaries.
+  function customSegments(text) {
+    const maxChars = Math.max(
+      CUSTOM.minSegChars,
+      Math.floor((Math.max(320, W) - CFG.pad * 2) / Math.max(8, charW))
+    );
+    const out = [];
+    for (const line of customRawLines(text)) {
+      let current = '';
+      for (let word of line.split(/\s+/).filter(Boolean)) {
+        while (word.length > maxChars) {
+          if (current) { out.push(current); current = ''; }
+          out.push(word.slice(0, maxChars));
+          word = word.slice(maxChars);
+          if (out.length >= CUSTOM.maxLines) break;
+        }
+        if (out.length >= CUSTOM.maxLines) break;
+        if (!word) continue;
+        if (!current) current = word;
+        else if (current.length + 1 + word.length <= maxChars) current += ' ' + word;
+        else { out.push(current); current = word; }
+        if (out.length >= CUSTOM.maxLines) break;
+      }
+      if (out.length >= CUSTOM.maxLines) break;
+      if (current) out.push(current);
+    }
+    return out.slice(0, CUSTOM.maxLines);
+  }
+
+  // Falling words: letters only, in reading order. Two-letter floor keeps
+  // punctuation fragments ("don't" -> "don") out of the playfield.
+  function customTokens(text) {
+    const raw = customNormaliseText(text).toLowerCase().match(/[a-z]+/g) || [];
+    const out = [];
+    for (const token of raw) {
+      if (token.length < 2 || token.length > CUSTOM.maxTokenLen) continue;
+      out.push(token);
+      if (out.length >= CUSTOM.maxTokens) break;
+    }
+    return out;
+  }
+
+  function customCounts(text) {
+    const normal = customNormaliseText(text);
+    const lines = customRawLines(text).length;
+    const words = normal.split(/\s+/).filter(Boolean).length;
+    const tokens = customTokens(text).length;
+    const chars = normal.replace(/\s+/g, ' ').trim().length;
+    return { lines, words, tokens, chars };
+  }
+
+  function customStageFromRecord(item) {
+    if (!item || typeof item !== 'object') return null;
+    const text = customNormaliseText(item.text);
+    if (!text.trim()) return null;
+    return {
+      id: String(item.id || ('stage-' + Math.random().toString(36).slice(2, 10))),
+      name: (String(item.name || 'Untitled stage').trim() || 'Untitled stage').slice(0, 40),
+      text,
+      layout: item.layout === 'words' ? 'words' : 'lines',
+      memorize: !!item.memorize,
+      loop: !!item.loop,
+      updated: Number(item.updated) || Date.now(),
+    };
+  }
+
+  function loadCustomStages() {
+    customStages = [];
+    customLast = null;
+    try {
+      const raw = localStorage.getItem(CUSTOM_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          const stage = customStageFromRecord(item);
+          if (stage) customStages.push(stage);
+          if (customStages.length >= CUSTOM.maxStages) break;
+        }
+      }
+      const lastRaw = localStorage.getItem(CUSTOM_LAST_KEY);
+      const last = lastRaw ? JSON.parse(lastRaw) : null;
+      if (last && typeof last.text === 'string' && customNormaliseText(last.text).trim()) {
+        customLast = {
+          name: String(last.name || 'Untitled stage').slice(0, 40),
+          text: customNormaliseText(last.text),
+          layout: last.layout === 'words' ? 'words' : 'lines',
+          memorize: !!last.memorize,
+          loop: !!last.loop,
+          clean: last.clean !== false,
+        };
+      }
+    } catch (e) {
+      customStages = [];
+      customLast = null;
+    }
+  }
+
+  function saveCustomStages() {
+    try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(customStages)); } catch (e) { /* ignore */ }
+  }
+
+  function rememberCustomConfig(config) {
+    customLast = {
+      name: config.name,
+      text: config.text,
+      layout: config.layout,
+      memorize: !!config.memorize,
+      loop: !!config.loop,
+      clean: config.clean !== false,
+    };
+    try { localStorage.setItem(CUSTOM_LAST_KEY, JSON.stringify(customLast)); } catch (e) { /* ignore */ }
+  }
+
+  // A blank stage name falls back to the text's opening words, so a list of
+  // saved stages is still readable when the player never names them.
+  function customDefaultName(text) {
+    const words = customNormaliseText(text).replace(/\s+/g, ' ').trim().split(' ').slice(0, 5).join(' ');
+    return (words || 'Untitled stage').slice(0, 40);
+  }
+
+  function customConfigOf(config) {
+    // Raw text: startCustomStage cleans and normalises it, so a direct debug
+    // start and the editor take exactly the same path.
+    const text = String(config && config.text != null ? config.text : '');
+    const layout = config && config.layout === 'words' ? 'words' : 'lines';
+    // No fallback here: the name is derived from the *cleaned* text in
+    // startCustomStage, so markup or citation junk never becomes the title.
+    const name = String((config && config.name) || '').trim().slice(0, 40);
+    return {
+      id: config && config.id ? String(config.id) : null,
+      name,
+      text,
+      clean: !(config && config.clean === false),
+      layout,
+      memorize: layout === 'lines' && !!(config && config.memorize),
+      loop: !!(config && config.loop),
+    };
+  }
+
+  // The vertical home of a practice line: just above the middle of the board,
+  // far from the signal strip, with room for the target frame and progress bar.
+  function customLineY() {
+    return Math.round((state.groundY - CFG.charH) * 0.52);
+  }
+
+  function startCustomStage(config) {
+    const cfg = customConfigOf(config);
+    // One cleaner, one entry point: the editor, F2/Again and the debug hook all
+    // get the same treatment.
+    const cleaned = cfg.clean ? customCleanText(cfg.text) : null;
+    const text = customNormaliseText(cleaned ? cleaned.text : cfg.text);
+    cfg.text = text;
+    if (!text.trim()) return false;
+    // The auto-name ignores citation junk even when cleanup is switched off.
+    const nameSource = cleaned ? cleaned.text : customCleanText(cfg.text).text;
+    if (!cfg.name || cfg.name === 'Untitled stage') cfg.name = customDefaultName(nameSource);
+    const prepared = cfg.layout === 'lines' ? customSegments(text) : customTokens(text);
+    if (!prepared.length) return false;
+
+    closeMenus();
+    if (ui.startMenu) ui.startMenu.classList.remove('open');
+    resumePhase = null;
+    hideDialogs();
+    ensureAudio();
+    rememberCustomConfig(cfg);
+    reset();                       // fresh board, counters and RNG; clears custom
+    state.phase = 'playing';
+    state.difficulty = settings.difficulty;
+    const custom = {
+      config: cfg,
+      name: cfg.name,
+      layout: cfg.layout,
+      memorize: cfg.memorize,
+      loop: cfg.loop,
+      cleaned: cleaned ? cleaned.stats : null,
+      lines: cfg.layout === 'lines' ? prepared : [],
+      tokens: cfg.layout === 'words' ? prepared : [],
+      queue: [],
+      remaining: 0,
+      done: 0,
+      total: prepared.length,
+      lineIndex: 0,
+      liveLine: null,
+      nextLineT: 0,
+      spawnT: 0.45,
+      pass: 1,
+      preview: 0,
+      hidden: false,
+      finished: false,
+    };
+    state.custom = custom;
+    if (custom.layout === 'lines') {
+      spawnCustomLine(0);
+    } else {
+      custom.queue = custom.tokens.slice();
+      custom.remaining = custom.tokens.length;
+    }
+    if (!state.simulating && cleaned && cleaned.removed > 0) {
+      popup(W / 2, 118, 'TEXT CLEANED \u00b7 ' + cleaned.removed + ' ITEMS REMOVED', COL.accent, {
+        size: 12, vy: -12, life: 1.5,
+      });
+    }
+    syncUi(true);
+    return true;
+  }
+
+  function spawnCustomLine(index) {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'lines') return null;
+    const text = custom.lines[index];
+    if (text == null) return null;
+    const width = charW * text.length;
+    const word = spawnWord(text, { x: Math.max(CFG.pad, (W - width) / 2), y: customLineY() });
+    if (!word) return null;
+    word.custom = true;
+    word.static = true;
+    word.line = true;
+    word.x = Math.max(CFG.pad, Math.min((W - word.w) / 2, W - CFG.pad - word.w));
+    word.y = customLineY();
+    word.progress = 0;
+    custom.lineIndex = index;
+    custom.liveLine = word;
+    custom.nextLineT = 0;
+    custom.preview = custom.memorize ? CUSTOM.previewSec : 0;
+    custom.hidden = false;
+    return word;
+  }
+
+  function spawnCustomRainWord() {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'words' || custom.remaining <= 0) return null;
+    if (!custom.queue.length) return null;
+    const text = custom.queue.shift();
+    const word = spawnWord(text, {});
+    if (!word) return null;
+    word.custom = true;
+    word.token = text;
+    word.y = queueTop(word);
+    return word;
+  }
+
+  function customLineHidden(word) {
+    const custom = state.custom;
+    return !!(custom && custom.layout === 'lines' && custom.memorize &&
+      custom.hidden && word === custom.liveLine);
+  }
+
+  function customHideLine() {
+    const custom = state.custom;
+    if (!custom || custom.hidden) return;
+    custom.hidden = true;
+    custom.preview = 0;
+    // The persistent "TYPE FROM MEMORY" label above the line carries the cue;
+    // a popup here would land on top of it.
+    if (!state.simulating) state.keyFlash = Math.max(state.keyFlash, 0.12);
+  }
+
+  function updateCustom(dt) {
+    const custom = state.custom;
+    if (!custom || custom.finished) return;
+    if (custom.layout === 'lines') {
+      if (custom.nextLineT > 0) {
+        custom.nextLineT -= dt;
+        if (custom.nextLineT <= 0) spawnCustomLine(custom.lineIndex + 1);
+      } else if (custom.memorize && !custom.hidden && custom.preview > 0) {
+        custom.preview -= dt;
+        if (custom.preview <= 0) customHideLine();
+      }
+      state.dangerLevel = 0;
+      state.dangerT = 0;
+      return;
+    }
+
+    state.speed = CUSTOM.practiceSpeed;
+    custom.spawnT -= dt;
+    if (custom.spawnT <= 0 && state.words.length < CUSTOM.practiceMaxWords) {
+      custom.spawnT = spawnCustomRainWord() ? CUSTOM.practiceSpawn : 0.45;
+    }
+    const base = state.speed * (H / 900);
+    for (const word of state.words) word.y += base * dt;
+    for (let i = state.words.length - 1; i >= 0; i--) {
+      const word = state.words[i];
+      if (word && word.y + CFG.charH >= state.groundY) customMiss(word);
+    }
+    state.dangerLevel = 0;
+    state.dangerT = 0;
+  }
+
+  function customMiss(word) {
+    const custom = state.custom;
+    if (!custom || custom.finished) return;
+    removeWord(word);
+    if (word.token) custom.queue.push(word.token);   // comes back later; never a lost word
+    state.combo = 0;
+    state.flash = CFG.mistakeFlash * 0.7;
+    state.shake = Math.max(state.shake, 0.16);
+    if (!state.simulating) {
+      const cx = clamp(word.x + word.w / 2, 0, W);
+      popup(cx, state.groundY - 26, 'MISSED', hsl(0.0, 1, 0.58), { size: 14, vy: -20, life: 0.8 });
+      ring(cx, state.groundY, hsl(0.0, 1, 0.58), 90, 0.24, 1);
+    }
+    playMistake();
+  }
+
+  function onCustomCleared(word) {
+    const custom = state.custom;
+    if (!custom || custom.finished) return;
+    custom.done += 1;
+    if (custom.layout === 'lines') {
+      custom.liveLine = null;
+      if (custom.lineIndex + 1 >= custom.lines.length) customComplete();
+      else custom.nextLineT = CUSTOM.nextLineGap;
+    } else if (custom.remaining > 0) {
+      custom.remaining -= 1;
+      if (custom.remaining <= 0) customComplete();
+    }
+  }
+
+  function customStartPass(custom) {
+    custom.pass += 1;
+    custom.done = 0;
+    // -1 means "the next spawn is line 0 of the new pass" (updateCustom adds
+    // one when it advances), so a looping one-line stage restarts correctly.
+    custom.lineIndex = custom.layout === 'lines' ? -1 : 0;
+    custom.liveLine = null;
+    custom.hidden = false;
+    custom.preview = 0;
+    custom.nextLineT = 0;
+    state.words.length = 0;
+    state.lockWord = null;
+    if (custom.layout === 'lines') {
+      custom.nextLineT = 0.6;
+    } else {
+      custom.queue = custom.tokens.slice();
+      custom.remaining = custom.tokens.length;
+      custom.spawnT = 0.55;
+    }
+    state.punch = Math.max(state.punch, 0.8);
+    state.clearFlash = Math.max(state.clearFlash, 0.6);
+    ring(W / 2, H * 0.42, hsl(0.5, 1, 0.68), 260, 0.5, 3);
+    popup(W / 2, H * 0.35, 'LOOP ' + custom.pass, hsl(0.5, 1, 0.68), { size: 26, vy: -18, life: 1.2 });
+    playPick();
+    syncUi(true);
+  }
+
+  function customComplete() {
+    const custom = state.custom;
+    if (!custom || custom.finished) return;
+    if (custom.loop) {
+      customStartPass(custom);
+      return;
+    }
+    custom.finished = true;
+    state.phase = 'customdone';
+    state.dangerLevel = 0;
+    state.dangerT = 0;
+    state.punch = Math.max(state.punch, 1);
+    state.clearFlash = Math.max(state.clearFlash, 0.9);
+    state.shake = Math.max(state.shake, 0.32);
+    ring(W / 2, H * 0.42, hsl(0.12, 1, 0.64), 360, 0.7, 4);
+    ring(W / 2, H * 0.42, hsl(0.52, 1, 0.68), 230, 0.5, 2);
+    ring(W / 2, H * 0.42, hsl(0.85, 1, 0.66), 130, 0.34, 2);
+    streakBurst(W / 2, H * 0.42, 22, { radial: true, speed: 340, spread: 40 });
+    popup(W / 2, H * 0.36, 'STAGE COMPLETE', hsl(0.12, 1, 0.64), { size: 30, vy: -22, life: 1.4 });
+    playDawn();
+    syncUi(true);
+  }
+
   // ─── Update ───────────────────────────────────────────────────────────────
   function update(dt) {
     state.t += dt;
@@ -2033,6 +2601,13 @@
     if (state.phase !== 'playing') return;
     if (state.hitPause > 0) {
       state.hitPause -= dt;
+      return;
+    }
+
+    // Custom stages run their own update: no pressure, no spawn ramp, no
+    // flares, no hearts. The practice clock and input path are shared.
+    if (state.custom) {
+      updateCustom(dt);
       return;
     }
 
@@ -2433,6 +3008,27 @@
 
   function drawDangerLine() {
     const y = state.groundY;
+    // Practice has no danger: a quiet rule marks the edge of the board and
+    // nothing here can cost a life.
+    if (state.custom) {
+      ctx.save();
+      ctx.globalAlpha = 0.42;
+      ctx.strokeStyle = COL.wordSet;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = PIXEL_FONT;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = COL.wordSet;
+      ctx.fillText('PRACTICE', W - 6, y - 2);
+      ctx.restore();
+      return;
+    }
     const danger = state.dangerLevel || 0;
     const beat = 0.5 + 0.5 * Math.sin(state.t * (danger > 0.5 ? 9 : 2.2));
     if (danger > 0.02) {
@@ -2476,6 +3072,7 @@
       const urgent = w.y + CFG.charH > state.groundY - 130;
       const inSet = set.indexOf(w) >= 0;
       const isTarget = w === target;
+      const memorized = customLineHidden(w);
       // Idle sway: every word drifts on its own little orbit. Visual only.
       const sway = light ? 0 : Math.sin(state.t * 1.55 + w.sway) * (isTarget ? 2.4 : 1.3);
       let x = Math.max(4, Math.min(w.x + sway, W - 4 - w.w));
@@ -2501,7 +3098,7 @@
       // Every word drags a fading neon tail behind it (sampled in update()).
       // The colour is its own hue rotated into the background's wheel, so the
       // trail reads as motion without stealing the word's own colour identity.
-      if (!light && state.phase === 'playing' && w.trail.length > 1) {
+      if (!light && !w.static && state.phase === 'playing' && w.trail.length > 1) {
         const trailColor = w.flare
           ? COL.flare
           : hsl(MOD(w.hue + state.t * 0.05 + 0.45, 1), 1, 0.62);
@@ -2534,7 +3131,9 @@
 
       // Shadow pass first: one fillText for the whole word keeps glyphs legible
       // over the bright parts of the tunnel without doubling the glyph cost.
-      if (!light) {
+      // A memorized line must skip it: the black copy would leak every letter
+      // the player is supposed to be recalling.
+      if (!light && !memorized) {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
         ctx.fillText(w.text, x + 2, w.y + 2);
       }
@@ -2545,6 +3144,13 @@
         const hidden = tunnelN > 0 && !typed && pos >= w.progress + tunnelN;
         const px = x + i * charW;
         if (hidden) {
+          ctx.fillStyle = COL.hidden;
+          ctx.fillText('\u00b7', px, w.y);
+          continue;
+        }
+        // Memorize: the untyped rest of the line becomes dots. The rhythm and
+        // length stay readable; the words have to come from memory.
+        if (memorized && pos >= w.progress) {
           ctx.fillStyle = COL.hidden;
           ctx.fillText('\u00b7', px, w.y);
           continue;
@@ -2582,6 +3188,8 @@
         ctx.fillText(w.text[i], px, w.y);
       }
       if (spawning) ctx.globalAlpha = 1;
+
+      if (w.custom && w.line) drawCustomLineHints(w, x);
 
       if (isTarget) drawTargetMarker(w, x, urgent);
       else if (inSet) drawSetMarker(w, x);
@@ -2668,6 +3276,35 @@
     ctx.fillRect(x, barY, w.w, 2);
     ctx.fillStyle = COL.typed;
     ctx.fillRect(x, barY, w.w * progress, 2);
+    ctx.restore();
+  }
+
+  // Practice-line furniture: a blinking caret at the next character, plus the
+  // Memorize state above the line (preview countdown, then the recall cue).
+  function drawCustomLineHints(w, x) {
+    const custom = state.custom;
+    if (!custom || state.phase !== 'playing' || state.words.indexOf(w) < 0) return;
+    if (w.progress < w.text.length && Math.sin(state.t * 7.5) > 0) {
+      const px = x + w.progress * charW;
+      ctx.fillStyle = COL.typed;
+      ctx.globalAlpha = 0.9;
+      ctx.fillRect(px + 1, w.y + CFG.charH - 3, Math.max(2, charW - 2), 2);
+      ctx.globalAlpha = 1;
+    }
+    if (!custom.memorize || w !== custom.liveLine) return;
+    ctx.save();
+    ctx.font = PIXEL_FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    if (custom.hidden) {
+      ctx.fillStyle = COL.accent;
+      ctx.globalAlpha = 0.75;
+      ctx.fillText('TYPE FROM MEMORY', x + w.w / 2, w.y - 12);
+    } else if (custom.preview > 0) {
+      ctx.fillStyle = COL.target;
+      ctx.globalAlpha = 0.8;
+      ctx.fillText('PREVIEW ' + Math.ceil(custom.preview) + 's', x + w.w / 2, w.y - 12);
+    }
     ctx.restore();
   }
 
@@ -2885,6 +3522,8 @@
       controls: $('dlgControls'),
       about: $('dlgAbout'),
       quit: $('dlgQuit'),
+      custom: $('dlgCustom'),
+      customdone: $('dlgCustomDone'),
     },
     draft: {
       grid: $('draftGrid'),
@@ -2897,6 +3536,23 @@
     },
     over: { score: $('overScore'), stats: $('overStats'), deck: $('overDeck') },
     dawn: { score: $('dawnScore'), stats: $('dawnStats'), deck: $('dawnDeck') },
+    custom: {
+      name: $('customName'),
+      text: $('customText'),
+      layout: $('customLayout'),
+      memorize: $('customMemorize'),
+      loop: $('customLoop'),
+      clean: $('customClean'),
+      saved: $('customSaved'),
+      meta: $('customMeta'),
+      hint: $('customHint'),
+      remove: $('customDelete'),
+    },
+    customResult: {
+      time: $('customResultTime'),
+      stats: $('customResultStats'),
+      name: $('customResultName'),
+    },
     pause: { seed: $('pauseSeedLine') },
     records: {
       bestScore: $('recBestScore'),
@@ -2954,7 +3610,8 @@
     const combo = Math.min(20, state.combo);
     const danger = state.phase === 'playing' ? Math.round((state.dangerLevel || 0) * 20) / 20 : 0;
     const key = state.phase + '|' + combo + '|' + danger + '|' + state.heat + '|' +
-      state.lives + '|' + (state.milestoneT > 0 ? 1 : 0) + '|' + settings.fx;
+      state.lives + '|' + (state.milestoneT > 0 ? 1 : 0) + '|' + settings.fx + '|' +
+      (state.custom ? 1 : 0);
     if (key === uiFxKey) return;
     uiFxKey = key;
     app.style.setProperty('--fx-combo', String(combo));
@@ -2963,9 +3620,11 @@
     app.style.setProperty('--fx-lives', String(state.lives));
     app.style.setProperty('--fx-wave', String(state.wave));
     const body = document.body;
-    for (const phase of ['menu', 'playing', 'paused', 'draft', 'dawn', 'gameover']) {
+    for (const phase of ['menu', 'playing', 'paused', 'draft', 'dawn', 'gameover', 'customdone']) {
       body.classList.toggle('phase-' + phase, state.phase === phase);
     }
+    // Practice strips the roguelite HUD down to one state panel (see style.css).
+    body.classList.toggle('practice', !!state.custom);
     body.classList.toggle('fx-combo-hot', combo >= 5);
     body.classList.toggle('fx-danger', danger > 0.55);
     // "Low life" means one life AND a word about to cross - the last life is
@@ -3010,7 +3669,8 @@
   // click; phase dialogs (draft, results) are handled by the game.
   function isInfoOverlay() {
     return uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' ||
-      uiModal === 'records' || uiModal === 'splits' || uiModal === 'achievements';
+      uiModal === 'records' || uiModal === 'splits' || uiModal === 'achievements' ||
+      uiModal === 'custom';
   }
 
   function phaseDialog() {
@@ -3018,6 +3678,7 @@
     if (state.phase === 'draft') return 'draft';
     if (state.phase === 'gameover') return 'gameover';
     if (state.phase === 'dawn') return 'dawn';
+    if (state.phase === 'customdone') return 'customdone';
     return null;
   }
 
@@ -3039,6 +3700,7 @@
     if (name === 'splits') populateSplits();
     if (name === 'achievements') populateAchievements();
     if (name === 'controls') ensureAudio();
+    if (name === 'custom') populateCustomDialog();
     showDialog(name);
   }
 
@@ -3061,6 +3723,304 @@
     setText(ui.mainAchCount, `${achievementCount()} / ${ACHIEVEMENTS.length}`);
     setText(ui.aboutBest, String(state.best));
     updateDifficultyUi();
+  }
+
+  // ── custom stage dialog ───────────────────────────────────────────────────
+  let customPrefill = null;
+
+  function openCustomStageDialog(prefill) {
+    customPrefill = prefill || null;
+    if (prefill && prefill.id) customEditingId = String(prefill.id);
+    openOverlay('custom');
+    customPrefill = null;
+  }
+
+  function setCustomHint(message) {
+    if (ui.custom && ui.custom.hint) setText(ui.custom.hint, message);
+  }
+
+  function customFormLayout() {
+    if (!ui.custom || !ui.custom.layout) return 'lines';
+    const active = ui.custom.layout.querySelector('.mode-btn[aria-pressed="true"]');
+    return active && active.dataset.layout === 'words' ? 'words' : 'lines';
+  }
+
+  function setCustomLayout(layout) {
+    if (!ui.custom || !ui.custom.layout) return;
+    const value = layout === 'words' ? 'words' : 'lines';
+    ui.custom.layout.querySelectorAll('.mode-btn').forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.layout === value));
+    });
+    if (ui.custom.memorize) {
+      ui.custom.memorize.disabled = value === 'words';
+      if (value === 'words') ui.custom.memorize.checked = false;
+    }
+  }
+
+  function updateCustomMeta() {
+    if (!ui.custom || !ui.custom.meta) return;
+    const clean = !!(ui.custom.clean && ui.custom.clean.checked);
+    const raw = ui.custom.text ? ui.custom.text.value : '';
+    const cleaned = clean ? customCleanText(raw) : null;
+    const text = customNormaliseText(cleaned ? cleaned.text : raw);
+    if (!text.trim()) {
+      setText(ui.custom.meta, clean ? 'Paste some text to begin. Cleanup is on.' : 'Paste some text to begin.');
+      return;
+    }
+    const layout = customFormLayout();
+    const counts = customCounts(text);
+    const suffix = cleaned && cleaned.removed > 0 ? ` \u00b7 ${cleaned.removed} cleaned away` : '';
+    if (layout === 'words') {
+      setText(ui.custom.meta, `${counts.tokens} falling words \u00b7 ${counts.chars} characters${suffix}`);
+    } else {
+      const segments = customSegments(text).length;
+      setText(ui.custom.meta,
+        `${segments} ${segments === 1 ? 'line' : 'lines'} to type \u00b7 ${counts.words} words \u00b7 ${counts.chars} characters${suffix}`);
+    }
+  }
+
+  function loadCustomStageIntoForm(stage) {
+    if (!ui.custom || !stage) return;
+    customEditingId = stage.id;
+    if (ui.custom.name) ui.custom.name.value = stage.name;
+    if (ui.custom.text) ui.custom.text.value = stage.text;
+    setCustomLayout(stage.layout);
+    if (ui.custom.memorize) ui.custom.memorize.checked = !!stage.memorize;
+    if (ui.custom.loop) ui.custom.loop.checked = !!stage.loop;
+    if (ui.custom.clean) ui.custom.clean.checked = stage.clean !== false;
+    setCustomHint(`Loaded \u201c${stage.name}\u201d \u2014 edits stay local until you Save.`);
+    updateCustomMeta();
+    buildCustomSavedList();
+  }
+
+  function buildCustomSavedList() {
+    if (!ui.custom || !ui.custom.saved) return;
+    const box = ui.custom.saved;
+    box.textContent = '';
+    if (!customStages.length) {
+      const empty = document.createElement('div');
+      empty.className = 'custom-saved-empty';
+      empty.textContent = 'No saved stages yet. Save this one to keep it.';
+      box.appendChild(empty);
+      if (ui.custom.remove) ui.custom.remove.disabled = true;
+      return;
+    }
+    for (const stage of customStages) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'custom-saved-item' + (stage.id === customEditingId ? ' selected' : '');
+      const name = document.createElement('span');
+      name.className = 'custom-saved-name';
+      name.textContent = stage.name;
+      const note = document.createElement('span');
+      note.className = 'custom-saved-note';
+      const counts = customCounts(stage.text);
+      note.textContent = (stage.layout === 'words' ? counts.tokens + ' words' : counts.lines + ' lines') +
+        (stage.memorize ? ' \u00b7 memorize' : '') + (stage.loop ? ' \u00b7 loop' : '');
+      item.appendChild(name);
+      item.appendChild(note);
+      item.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ensureAudio();
+        loadCustomStageIntoForm(stage);
+      });
+      box.appendChild(item);
+    }
+    if (ui.custom.remove) ui.custom.remove.disabled = !customEditingId;
+  }
+
+  function populateCustomDialog() {
+    if (!ui.custom || !ui.custom.text) return;
+    let source = customPrefill || customLast || customStages[0] || null;
+    if (source && source.layout) {
+      customEditingId = source.id ? String(source.id) : null;
+      // A prefill can carry the id of a stage that has since been deleted; only
+      // a live saved id counts, otherwise match by content.
+      if (customEditingId && !customStages.some((s) => s.id === customEditingId)) customEditingId = null;
+      if (!customEditingId) {
+        const match = customStages.find((s) => s.text === source.text && s.name === source.name);
+        if (match) customEditingId = match.id;
+      }
+    }
+    if (ui.custom.name) ui.custom.name.value = source ? source.name : '';
+    ui.custom.text.value = source ? source.text : '';
+    setCustomLayout(source ? source.layout : 'lines');
+    if (ui.custom.memorize) ui.custom.memorize.checked = !!(source && source.memorize);
+    if (ui.custom.loop) ui.custom.loop.checked = !!(source && source.loop);
+    if (ui.custom.clean) ui.custom.clean.checked = !source || source.clean !== false;
+    setCustomHint(customStages.length
+      ? `Saved stages: ${customStages.length} of ${CUSTOM.maxStages}. Click one to load it, or New for a fresh stage.`
+      : 'Practice stage: no cards, no lives, no Pressure.');
+    updateCustomMeta();
+    buildCustomSavedList();
+  }
+
+  function customReadConfig() {
+    const raw = ui.custom.text ? ui.custom.text.value : '';
+    const clean = !!(ui.custom.clean && ui.custom.clean.checked);
+    const cleaned = clean ? customCleanText(raw) : null;
+    const text = customNormaliseText(cleaned ? cleaned.text : raw);
+    const layout = customFormLayout();
+    const name = (String(ui.custom.name ? ui.custom.name.value : '').trim() || customDefaultName(text)).slice(0, 40);
+    const counts = customCounts(text);
+    return {
+      name,
+      text,                        // cleaned + normalised preview (validation, counts)
+      raw: String(raw),            // untouched paste, for Save and "clean off" starts
+      clean,
+      layout,
+      memorize: !!(ui.custom.memorize && ui.custom.memorize.checked),
+      loop: !!(ui.custom.loop && ui.custom.loop.checked),
+      counts,
+      removed: cleaned ? cleaned.removed : 0,
+    };
+  }
+
+  function submitCustomStage() {
+    if (!ui.custom) return;
+    const config = customReadConfig();
+    if (!config.text.trim()) {
+      setCustomHint('Paste some text first.');
+      if (ui.custom.text) ui.custom.text.focus();
+      return;
+    }
+    if (config.layout === 'words' && !config.counts.tokens) {
+      setCustomHint('That text has no usable words (2 to 16 letters).');
+      return;
+    }
+    if (config.layout === 'lines' && !config.counts.lines) {
+      setCustomHint('That text has no usable lines.');
+      return;
+    }
+    // Start never rewrites the saved-stage list: only Save does. A saved stage
+    // can be tried with edits and left untouched.
+    const started = startCustomStage({
+      id: customEditingId || null,
+      name: config.name,
+      text: config.raw,
+      clean: config.clean,
+      layout: config.layout,
+      memorize: config.memorize,
+      loop: config.loop,
+    });
+    if (!started) setCustomHint('That text produced no playable stage.');
+  }
+
+  function saveCustomStageAction() {
+    if (!ui.custom) return;
+    const config = customReadConfig();
+    // Save the raw paste (normalised only), so "Clean on start" stays a choice
+    // the player can turn off later instead of being baked into the stage.
+    const storedText = customNormaliseText(config.raw);
+    if (!storedText.trim()) { setCustomHint('Nothing to save yet.'); return; }
+    let stage = customEditingId ? customStages.find((s) => s.id === customEditingId) : null;
+    if (stage) {
+      Object.assign(stage, {
+        name: config.name, text: storedText, layout: config.layout,
+        memorize: config.memorize, loop: config.loop, updated: Date.now(),
+      });
+    } else {
+      stage = {
+        id: 'stage-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: config.name, text: storedText, layout: config.layout,
+        memorize: config.memorize, loop: config.loop, updated: Date.now(),
+      };
+      customStages.unshift(stage);
+      if (customStages.length > CUSTOM.maxStages) customStages.length = CUSTOM.maxStages;
+      customEditingId = stage.id;
+    }
+    saveCustomStages();
+    if (ui.custom.name) ui.custom.name.value = stage.name;
+    setCustomHint(`Saved \u201c${stage.name}\u201d \u00b7 ${customStages.length} of ${CUSTOM.maxStages} stages. Use New to make another.`);
+    buildCustomSavedList();
+  }
+
+  function deleteCustomStageAction() {
+    if (!customEditingId) { setCustomHint('Load a saved stage first.'); return; }
+    const index = customStages.findIndex((s) => s.id === customEditingId);
+    if (index < 0) { customEditingId = null; buildCustomSavedList(); return; }
+    const name = customStages[index].name;
+    customStages.splice(index, 1);
+    saveCustomStages();
+    customEditingId = null;
+    setCustomHint(`Deleted \u201c${name}\u201d \u00b7 ${customStages.length} of ${CUSTOM.maxStages} stages left.`);
+    buildCustomSavedList();
+  }
+
+  // Start a blank editor without touching the saved list: the way to make a
+  // second, third, ... stage. Saving allocates a new id because customEditingId
+  // is cleared here.
+  function newCustomStageAction() {
+    if (!ui.custom) return;
+    customEditingId = null;
+    if (ui.custom.name) ui.custom.name.value = '';
+    if (ui.custom.text) ui.custom.text.value = '';
+    setCustomLayout('lines');
+    if (ui.custom.memorize) ui.custom.memorize.checked = false;
+    if (ui.custom.loop) ui.custom.loop.checked = false;
+    if (ui.custom.clean) ui.custom.clean.checked = true;
+    setCustomHint(customStages.length
+      ? `New stage. ${customStages.length} saved \u2014 paste text, then Save to add another.`
+      : 'New stage. Paste text, name it if you like, then Save.');
+    updateCustomMeta();
+    buildCustomSavedList();
+    if (ui.custom.text) ui.custom.text.focus();
+  }
+
+  // Explicit Clean button: runs the same cleaner and reports the receipt.
+  function cleanCustomTextAction() {
+    if (!ui.custom || !ui.custom.text) return;
+    const raw = ui.custom.text.value;
+    if (!raw.trim()) { setCustomHint('Nothing to clean yet.'); return; }
+    const result = customCleanText(raw);
+    ui.custom.text.value = result.text;
+    updateCustomMeta();
+    if (!result.removed) {
+      setCustomHint('Nothing to clean: the text is already plain.');
+      return;
+    }
+    const bits = [];
+    if (result.stats.citations) bits.push(result.stats.citations + ' citation markers');
+    if (result.stats.links) bits.push(result.stats.links + ' links');
+    if (result.stats.urls) bits.push(result.stats.urls + ' URLs');
+    if (result.stats.markup) bits.push(result.stats.markup + ' markup bits');
+    if (result.stats.chrome) bits.push(result.stats.chrome + ' wiki chrome lines');
+    if (result.stats.references) {
+      bits.push(result.stats.references + (result.stats.references === 1 ? ' reference line' : ' reference lines'));
+    }
+    setCustomHint('Cleaned: removed ' + bits.join(', ') + '.');
+  }
+
+  function populateCustomResult() {
+    if (!ui.customResult) return;
+    const custom = state.custom;
+    const elapsed = Math.max(0, state.runSec);
+    const wpm = elapsed > 0 ? Math.round((state.keys / 5) / (elapsed / 60)) : 0;
+    const totalKeys = state.keys + state.mistakes;
+    const accuracy = totalKeys ? Math.round((state.keys / totalKeys) * 100) : 100;
+    setText(ui.customResult.time, fmtTime(elapsed));
+    const layout = custom ? custom.layout : 'lines';
+    const unit = layout === 'words' ? 'words' : 'lines';
+    const done = custom ? custom.done : 0;
+    const total = custom ? custom.total : 0;
+    const pass = custom && custom.pass > 1 ? ` \u00b7 pass ${custom.pass}` : '';
+    setText(
+      ui.customResult.stats,
+      `${done}/${total} ${unit} ${layout === 'words' ? 'cleared' : 'typed'} \u00b7 ${state.keys} keys \u00b7 ` +
+      `${state.mistakes} misses \u00b7 ${wpm} WPM \u00b7 ${accuracy}% accuracy${pass}`
+    );
+    setText(ui.customResult.name, custom ? custom.name : 'Custom stage');
+  }
+
+  function againCustomStage() {
+    const config = state.custom ? state.custom.config : null;
+    if (config) startCustomStage(config);
+  }
+
+  function editCustomStage() {
+    const config = state.custom ? state.custom.config : customLast;
+    openCustomStageDialog(config || null);
   }
 
   function returnToMenu() {
@@ -3290,6 +4250,24 @@
   }
 
   function populatePause() {
+    const note = ui.dialogs.pause && ui.dialogs.pause.querySelector('.pause-note');
+    const fine = ui.dialogs.pause && ui.dialogs.pause.querySelector('.fine-print');
+    if (state.custom) {
+      const custom = state.custom;
+      setText(note, 'The stage is frozen. Nothing changes until you resume.');
+      setText(fine, 'Press Esc or Enter to resume. Restart begins the stage again from the top; Main Menu abandons it.');
+      setText(
+        ui.pause.seed,
+        `${custom.name} \u00b7 ${fmtTime(state.runSec)} played \u00b7 ` +
+        (custom.layout === 'lines'
+          ? `line ${Math.max(1, Math.min(custom.lineIndex + 1, custom.total))}/${custom.total}`
+          : `${custom.done}/${custom.total} words`) +
+        (custom.memorize ? ' \u00b7 memorize' : '') + (custom.loop ? ' \u00b7 loop' : '')
+      );
+      return;
+    }
+    setText(note, 'Words are frozen. Nothing falls until you resume.');
+    setText(fine, 'Press Esc or Enter to resume. Restart begins a new run at wave 1; Main Menu abandons the run.');
     setText(
       ui.pause.seed,
       `Seed ${state.seed} \u00b7 ${fmtTime(state.runSec)} played \u00b7 ` +
@@ -3330,9 +4308,53 @@
     return Math.max(0, state.runSec - state.waveStartSec);
   }
 
+  // The signal strip is DOM, so in a practice stage its three cells become the
+  // practice readout (time, progress, stage) and the labels change with them.
+  let uiStripLabelCache = null;
+  function stripLabelEls() {
+    if (!uiStripLabelCache && ui.strip.root) {
+      uiStripLabelCache = Array.from(ui.strip.root.querySelectorAll('.strip-label'));
+    }
+    return uiStripLabelCache || [];
+  }
+
+  function restoreStripLabels() {
+    const labels = stripLabelEls();
+    if (labels.length && labels[0].textContent !== 'RUN') labels[0].textContent = 'RUN';
+    if (labels.length > 1 && labels[1].textContent !== 'THIS WAVE') labels[1].textContent = 'THIS WAVE';
+  }
+
   let uiStripKey = '';
   function populateStrip() {
     if (!ui.strip.root) return;
+    if (state.custom) {
+      const custom = state.custom;
+      const key = [
+        'custom', Math.floor(state.runSec), custom.layout, custom.pass, custom.done,
+        custom.lineIndex, custom.total, custom.hidden ? 1 : 0, state.phase,
+      ].join('|');
+      if (key === uiStripKey) return;
+      uiStripKey = key;
+      const labels = stripLabelEls();
+      if (labels.length > 0) labels[0].textContent = 'TIME';
+      if (labels.length > 1) labels[1].textContent = custom.layout === 'lines' ? 'LINE' : 'WORDS';
+      if (labels.length > 2) labels[2].textContent = 'STAGE';
+      const done = custom.layout === 'lines'
+        ? (state.phase === 'customdone' ? custom.total : Math.min(custom.lineIndex + 1, custom.total))
+        : custom.done;
+      setText(ui.strip.run, fmtTime(state.runSec));
+      // One fact per cell: loop pass on the left, the memorize cue in the
+      // middle, the layout on the right. No repeated labels.
+      setText(ui.strip.runSub, custom.loop ? `Loop ${custom.pass}` : '');
+      setText(ui.strip.wave, `${done} / ${custom.total}`);
+      setText(ui.strip.waveSub, custom.memorize ? 'Memorize' : '');
+      setClass(ui.strip.root, 'flash', false);
+      setText(ui.strip.mode, 'CUSTOM');
+      setText(ui.strip.best, custom.name.toUpperCase().slice(0, 18));
+      setText(ui.strip.bestSub, custom.layout === 'lines' ? 'Lines' : 'Falling words');
+      return;
+    }
+    restoreStripLabels();
     const wave = Math.min(state.wave, CFG.wavesPerRun);
     const live = liveWaveSplit();
     const flash = state.splitFlashT > 0 && state.lastSplit;
@@ -3388,9 +4410,29 @@
       state.lives, state.shields, state.shieldMax, state.heat, pressure(),
       Math.floor(state.runSec), state.score, state.combo, state.difficulty,
       target && target.fake ? 1 : 0, reversed() ? 1 : 0, tunnelVisible() > 0 ? 1 : 0,
+      state.custom ? 1 : 0, state.custom ? state.custom.lineIndex : -1,
+      state.custom ? state.custom.done : -1, state.custom ? (state.custom.hidden ? 1 : 0) : 0,
     ].join('|');
     if (statusKey === uiStatusKey) return;
     uiStatusKey = statusKey;
+
+    // Practice stages replace every roguelite readout with the practice ones.
+    if (state.custom) {
+      const custom = state.custom;
+      setText(ui.status.main, state.phase === 'customdone' ? 'Stage complete' : 'Practice');
+      setText(ui.status.time, `Time: ${fmtTime(state.runSec)}`);
+      setText(ui.status.mode, 'Mode: Custom');
+      setText(ui.status.score, `Cleared: ${custom.done}/${custom.total}`);
+      setText(ui.status.combo, `Combo: ${comboMultiplier().toFixed(2)}\u00d7`);
+      setText(ui.status.wave, custom.layout === 'lines'
+        ? `Line: ${Math.max(1, Math.min(custom.lineIndex + 1, custom.total))}/${custom.total}`
+        : `Words: ${custom.done}/${custom.total}`);
+      setText(ui.status.lives, 'Lives: \u2014');
+      setText(ui.status.shields, 'Shields: \u2014');
+      setText(ui.status.heat, 'Heat: \u2014');
+      setText(ui.status.pressure, 'Pressure: \u2014');
+      return;
+    }
 
     // State flags that explain why a word is not accepting keys: a fake target,
     // Reverse, Tunnel. They sit in the wide status panel next to the combo.
@@ -3399,7 +4441,8 @@
       if (reversed()) playingText += ' \u00b7 REVERSE';
       if (tunnelVisible() > 0) playingText += ' \u00b7 TUNNEL';
       if (target && target.fake) playingText += ' \u00b7 DECOY - WAIT';
-      if (state.combo > 0) playingText += ` \u00b7 combo x${comboMultiplier().toFixed(2)}`;
+      // The combo lives in its own status panel; repeating it here was a second
+      // readout of the same number.
     }
     const phaseText = {
       menu: 'Ready',
@@ -3434,9 +4477,16 @@
     } else if (state.phase === 'paused') {
       label = 'Paused';
     } else if (state.phase === 'playing') {
-      label = `Wave ${Math.min(state.wave, CFG.wavesPerRun)}` + (state.endless ? ' (endless)' : '');
+      if (state.custom) {
+        label = state.custom.layout === 'lines'
+          ? `Custom \u00b7 Line ${Math.max(1, Math.min(state.custom.lineIndex + 1, state.custom.total))}`
+          : 'Custom \u00b7 Words';
+      } else {
+        label = `Wave ${Math.min(state.wave, CFG.wavesPerRun)}` + (state.endless ? ' (endless)' : '');
+      }
     } else if (state.phase === 'draft') label = 'Draft';
     else if (state.phase === 'dawn') label = 'Dawn';
+    else if (state.phase === 'customdone') label = 'Stage Complete';
     else if (state.phase === 'gameover') label = 'Signal Lost';
     const title = `Wordfall - ${label}`;
     setText(ui.titleText, title);
@@ -3444,6 +4494,13 @@
   }
 
   function updateDeckField() {
+    if (state.custom) {
+      const custom = state.custom;
+      setText(ui.deckField,
+        'Practice \u00b7 ' + (custom.layout === 'lines' ? 'Lines' : 'Words') +
+        (custom.memorize ? ' \u00b7 Memorize' : '') + (custom.loop ? ' \u00b7 Loop' : ''));
+      return;
+    }
     setText(ui.deckField, heldCardsText());
   }
 
@@ -3452,6 +4509,7 @@
     if (state.phase === 'paused') populatePause();
     if (state.phase === 'gameover') populateResult('gameover');
     if (state.phase === 'dawn') populateResult('dawn');
+    if (state.phase === 'customdone') populateCustomResult();
     if (state.phase === 'menu') populateMain();
     updateMenuStates();
     if (isInfoOverlay()) return;
@@ -3599,7 +4657,11 @@
     closeMenus();
     ui.startMenu.classList.remove('open');
     switch (cmd) {
-      case 'new': startNewRun(); break;
+      case 'new':
+        // While a practice stage is on the board, "new run" means restart it.
+        if (state.custom) startCustomStage(state.custom.config);
+        else startNewRun();
+        break;
       case 'menu': returnToMenu(); break;
       case 'quit': onClose(); break;
       case 'exit': onClose(); break;
@@ -3619,6 +4681,7 @@
       case 'records': openOverlay('records'); break;
       case 'splits': openOverlay('splits'); break;
       case 'achievements': openOverlay('achievements'); break;
+      case 'custom': openCustomStageDialog(); break;
       case 'difficulty': cycleDifficulty(); break;
       case 'maximize': toggleMaximize(); break;
       case 'controls': openOverlay('controls'); break;
@@ -3759,6 +4822,40 @@
         if (digits !== ui.seedInput.value) ui.seedInput.value = digits;
       });
     }
+
+    // Custom stage dialog: layout pills, live counts, save/delete/start.
+    if (ui.custom && ui.custom.layout) {
+      ui.custom.layout.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.blur) btn.blur();
+          ensureAudio();
+          setCustomLayout(btn.dataset.layout);
+          updateCustomMeta();
+        });
+      });
+    }
+    if (ui.custom && ui.custom.text) {
+      ui.custom.text.addEventListener('input', updateCustomMeta);
+    }
+    if (ui.custom && ui.custom.clean) {
+      ui.custom.clean.addEventListener('change', updateCustomMeta);
+    }
+    if (ui.custom && ui.custom.name) {
+      ui.custom.name.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); submitCustomStage(); }
+      });
+    }
+    click('customNew', newCustomStageAction);
+    click('customCleanBtn', cleanCustomTextAction);
+    click('customStart', submitCustomStage);
+    click('customSave', saveCustomStageAction);
+    click('customDelete', deleteCustomStageAction);
+    click('customCancel', closeOverlay);
+    click('customAgain', () => { ensureAudio(); againCustomStage(); });
+    click('customEdit', editCustomStage);
+    click('customResultMenu', returnToMenu);
     click('controlsOk', closeOverlay);
     click('aboutOk', closeOverlay);
     click('recordsOk', closeOverlay);
@@ -3799,7 +4896,10 @@
     click('overSeed', () => startNewRun(state.seed));
     click('overQuit', onClose);
     click('pauseResume', resumeGame);
-    click('pauseRestart', () => startNewRun());
+    click('pauseRestart', () => {
+      if (state.custom) startCustomStage(state.custom.config);
+      else startNewRun();
+    });
     click('pauseControls', () => openOverlay('controls'));
     click('dawnKeep', () => {
       ensureAudio();
@@ -4039,10 +5139,20 @@
   window.addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey) return;
 
-    // Let the optional seed field edit itself; only its global keys (Enter, Esc,
-    // F2) fall through to the game hotkeys.
-    if (event.target === ui.seedInput &&
-        event.key !== 'Enter' && event.key !== 'Escape' && event.key !== 'F2') return;
+    // Form fields own their keys. The seed field still passes Enter/Esc/F2
+    // through; the custom-stage textarea is a real editor (Enter inserts a
+    // newline), and Esc always closes the dialog it belongs to.
+    const fieldTag = event.target && event.target.tagName;
+    if (fieldTag === 'INPUT' || fieldTag === 'TEXTAREA') {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (isInfoOverlay()) closeOverlay();
+        return;
+      }
+      const isSeed = event.target === ui.seedInput;
+      const passthrough = isSeed && (event.key === 'Enter' || event.key === 'F2');
+      if (!passthrough) return;
+    }
 
     if (event.altKey) {
       // Win95 menu accelerators: Alt+F / Alt+G / Alt+V / Alt+H.
@@ -4057,8 +5167,14 @@
 
     ensureAudio();
 
-    // A user-opened dialog (Controls / About / Records / Quit) captures Enter and Esc.
+    // A user-opened dialog (Controls / About / Records / Custom / Quit) captures
+    // Enter and Esc. In the Custom editor, Enter on a real button should press
+    // that button instead of closing the dialog.
     if (isInfoOverlay()) {
+      if (event.key === 'Enter' && uiModal === 'custom' &&
+          event.target && event.target.closest && event.target.closest('#dlgCustom button')) {
+        return;
+      }
       if (event.key === 'Escape' || event.key === 'Enter') {
         event.preventDefault();
         closeOverlay();
@@ -4068,7 +5184,8 @@
 
     if (event.key === 'F2') {
       event.preventDefault();
-      startNewRun();
+      if (state.custom) startCustomStage(state.custom.config);
+      else startNewRun();
       return;
     }
 
@@ -4102,6 +5219,7 @@
       if (state.phase === 'menu') startNewRun(seedFromInput());
       else if (state.phase === 'gameover') reset();
       else if (state.phase === 'dawn') continueEndless();
+      else if (state.phase === 'customdone') againCustomStage();
       event.preventDefault();
       return;
     }
@@ -4127,6 +5245,12 @@
     }
 
     if (event.key === ' ' || event.key === 'Backspace') {
+      // Space is a real character on a practice line; everywhere else it stays
+      // swallowed so it can never be a hotkey in the roguelite.
+      if (event.key === ' ' && state.phase === 'playing' &&
+          state.custom && state.custom.layout === 'lines') {
+        typeLetter(' ');
+      }
       event.preventDefault();
       return;
     }
@@ -4339,9 +5463,23 @@
     benchScene,
     sim,
     rng,
+    custom: {
+      stages: () => customStages.map((s) => Object.assign({}, s, { text: s.text.slice(0, 120) })),
+      last: () => customLast,
+      start: startCustomStage,
+      open: openCustomStageDialog,
+      state: () => state.custom,
+      segments: customSegments,
+      tokens: customTokens,
+      counts: customCounts,
+      clean: customCleanText,
+      config: customConfigOf,
+      max: CUSTOM,
+    },
   };
 
   // ─── Boot ─────────────────────────────────────────────────────────────────
+  loadCustomStages();
   resize();
   initUi();
   if (window.ResizeObserver) {

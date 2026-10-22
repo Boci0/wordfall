@@ -33,6 +33,14 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 &nbsp;&nbsp;&nbsp;
 <img src="shots/01-menu.png" alt="The Wordfall main screen: title, Start Run, difficulty selection, Records/Splits/Achievements shortcuts and machine bests" width="31%">
 
+<br><br>
+
+<img src="shots/14-custom-dialog.png" alt="The Custom Stage editor: a pasted poem, Lines or Falling words, Memorize, Loop and Clean on start toggles, Clean text and New/Save/Delete buttons, and a saved-stage list" width="31%">
+&nbsp;&nbsp;&nbsp;
+<img src="shots/15-custom-lines.png" alt="A custom Lines stage mid-type: the typed prefix in green, the rest of the line waiting, framed by the target marker and progress bar" width="31%">
+&nbsp;&nbsp;&nbsp;
+<img src="shots/16-custom-memory.png" alt="Memorize mode: the typed prefix stays visible while the rest of the line is hidden behind dots under a TYPE FROM MEMORY cue" width="31%">
+
 </div>
 
 <br>
@@ -92,8 +100,10 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 
 ### Chase the clock
 
-- A live run clock in the status bar and signal strip, frozen by pauses and drafts
+- A live run clock in the signal strip, frozen by pauses and drafts
 - Every wave is timed; the signal strip shows the live split and its PB
+- One readout per fact: the strip owns the clock and mode, the status bar keeps the combo,
+  score, wave and survival panels
 - **Game → Splits…** lists best split and cumulative time for all twelve waves
 - Fifteen achievements, from a flawless wave to a sub-five-minute Dawn
 
@@ -134,6 +144,32 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 
 </td>
 </tr>
+<tr>
+<td width="50%" valign="top">
+
+### Practice with your own text
+
+- **Custom Stage…** on the main screen or in the Game menu takes anything you paste
+- Keep up to 20 saved stages; **New** starts another, **Delete** removes the loaded one
+- Type it as **Lines**: one display row at a time, spaces and punctuation included
+- Or as **Falling words**: every 2-16 letter word drops in, at a fixed gentle pace
+
+</td>
+<td width="50%" valign="top">
+
+### Drill it until it sticks
+
+- **Clean text** strips citation markers like `[1]` and `[b]`, links, URLs and wiki clutter
+- **Clean on start** runs that cleanup automatically on every start
+- **Memorize** previews each line for 3.5 s, then hides the rest behind dots
+- **Loop** runs the same text again and again
+- In a drill the status bar collapses to one **Practice** panel and the strip shows time,
+  line/word progress and the stage name
+- No cards, no lives, no Pressure; finishing shows time, keys, WPM and accuracy
+- Nothing touches your records or achievements
+
+</td>
+</tr>
 </table>
 
 ## Download
@@ -170,7 +206,8 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 **Read. Commit. Survive.**
 
 - **The main screen is the title card.** Start a run, pick Casual / Standard / Nightmare,
-  or open Records, Splits, Achievements, Controls and About without leaving the window.
+  or open Records, Splits, Achievements, Custom Stage, Controls and About without leaving
+  the window.
   **File → Main Menu** and the pause / game-over dialogs always bring it back.
 - **Only the lowest word is live.** Everything else is inert until it becomes the target.
   Your first correct letter locks on, so you commit to a word the moment you begin it.
@@ -192,6 +229,13 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 - **Choose Casual, Standard or Nightmare** on the main screen or from **Game → Difficulty**.
 - **Bring a seed.** Every run has a seed; type one on the main screen to replay a shared run,
   or use **Retry Seed** on the result or Dawn dialog.
+- **Practice with anything you paste.** **Custom Stage…** on the main screen or in the
+  **Game** menu turns text into a drill: **Lines** to type it exactly as written, or
+  **Falling words** to clear from the board. **New** keeps up to 20 saved stages,
+  **Clean text** strips the citation markers, links and wiki clutter a web paste drags in
+  (**Clean on start** does it automatically), **Memorize** hides each line after a short
+  preview and **Loop** runs it again; there are no cards, lives or Pressure, and it never
+  touches your records.
 - **A keyboard is required.** The browser build and the native app play identically.
 
 ### Controls
@@ -204,13 +248,15 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 | 1 2 3 | draft: pick the matching card |
 | R | draft: reroll the offer (once per run) |
 | S | draft: skip (`+150 × wave` points, +1 Shield next wave, still raises Pressure) |
-| F2 | new run |
-| Game menu | Difficulty, Splits…, Achievements… and Records… |
+| F2 | new run; in a custom stage, restart the same text |
+| Game menu | Difficulty, Custom Stage…, Splits…, Achievements… and Records… |
+| Custom | **Custom Stage…** on the main screen or **Game** menu; in a drill Esc pauses and F2 restarts the same text |
 
 Everything in the window is clickable: the main screen, File / Game / View / Help menus, the
 toolbar, desktop icon, taskbar button and title-bar buttons all work. The main screen and the
-Game menu carry Difficulty, Splits…, Achievements… and Records…; the game-over dialog carries
-Retry, Retry Seed, Main Menu and Quit, and the pause dialog has Main Menu too.
+Game menu carry Difficulty, Custom Stage…, Splits…, Achievements… and Records…; the
+game-over dialog carries Retry, Retry Seed, Main Menu and Quit, and the pause dialog has
+Main Menu too.
 
 <details>
 <summary><b>The 18-card deck</b></summary>
@@ -278,6 +324,7 @@ time, so rebuild after changing the game. `install.ps1` copies the build into
 ```bash
 node tools/smoke.mjs            # Playwright UI, rules, effects and frame-time checks
 node tools/qa-v15.mjs           # main screen, clock, splits, achievements, difficulty, decoy, CPU budget
+node tools/qa-custom.mjs        # custom stages: entry, layouts, memorize, loop, New/multi-stage, text cleanup, isolation
 node tools/bot.mjs --seeds 100  # headless WPM bot against the SPEC balance targets
 ```
 
@@ -293,7 +340,7 @@ diagnostics and the balance lab are documented in the
 | :--- | :--- |
 | [SPEC.md](SPEC.md) | The design doc: rules, cards, milestones and tuning targets |
 | [TECHNICAL.md](TECHNICAL.md) | Renderer, presentation, native shell, updater, test harnesses and tuning |
-| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.6.0 |
+| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.7.0 |
 | [BALANCE-LAB.md](BALANCE-LAB.md) | Measured card power, draft-offer distribution and tuning recommendations |
 | [QA-REPORT.md](QA-REPORT.md) · [QA-REPORT-M6.md](QA-REPORT-M6.md) · [QA-REPORT-M7.md](QA-REPORT-M7.md) · [QA-JUICE.md](QA-JUICE.md) | Independent acceptance reviews for each milestone |
 | [QA-REPORT-V15.md](QA-REPORT-V15.md) · [QA-DECOY.md](QA-DECOY.md) | v1.5 verification, and the decoy / "long words don't die" investigation |
@@ -307,5 +354,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.6.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.7.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>

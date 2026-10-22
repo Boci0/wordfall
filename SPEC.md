@@ -2,13 +2,13 @@
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1-M7 implemented**, current build v1.6.0, presented as a Windows 95-era desktop
+Status: **M1-M7 implemented**, current build v1.7.0, presented as a Windows 95-era desktop
 application (browser and native Windows build), plus the Relay 12 background and curve
 smoothing in §11, the M7 impact/draft-balance pass in §12, the native in-app updater in
-§13, the v1.5 score-attack pass in §14, and the v1.6 typing-speed curve and seed picker in
-§15. M5 numbers, tuning notes and deviations are in §9; the M6 additions and their measured
-numbers are in §10; M7 is in §12, with the measured card-power evidence in
-[BALANCE-LAB.md](BALANCE-LAB.md).
+§13, the v1.5 score-attack pass in §14, the v1.6 typing-speed curve and seed picker in
+§15, and the custom-stage practice mode in §16. M5 numbers, tuning notes and deviations
+are in §9; the M6 additions and their measured numbers are in §10; M7 is in §12, with the
+measured card-power evidence in [BALANCE-LAB.md](BALANCE-LAB.md).
 
 ## 1. Pillar
 
@@ -610,6 +610,12 @@ multipliers, wave size and Dawn target are untouched.
   canvas: the playfield renderer is soft-focus, but the readout must be crisp. It shows the
   run clock and wave progress, the live this-wave split with the previous split and the
   wave PB, and the mode with best score / fastest Dawn.
+- One readout per fact: the strip is the **only** visible run clock and mode readout.
+  `#statusTime` and `#statusMode` are hidden globally (`display: none`) but stay in the DOM
+  and keep their text updated, because tests and the internals still read them. The status
+  main line likewise stopped appending the combo (`Playing · combo ×1.15`) - the Combo
+  panel is the only combo readout; REVERSE / TUNNEL / DECOY - WAIT stay on the main line
+  because they explain why keys are being refused. See §16.6 for the practice layout.
 - On completion the strip's centre readout flashes gold for 2.2 s with `FIRST SPLIT`,
   `NEW PB` or the delta against the PB. The old centre-screen split popups were removed
   because they landed on the wave-clear title card; the title card itself is centred at
@@ -647,6 +653,9 @@ multipliers, wave size and Dawn target are untouched.
   mid-run menu change only affects the next run. The result screen names the mode.
 - There is deliberately **no difficulty score multiplier**: records and achievements are
   shared, so the displayed score stays comparable. A harder mode is its own reward.
+- **Custom stages** are a separate practice mode with no difficulty setting at all: the
+  board uses its own fixed speed and spawn rate, independent of the mode and of Pressure
+  (see §16).
 
 ### 14.4 Decoy clarity
 
@@ -678,15 +687,16 @@ with a full main screen (`#mainScreen`), a DOM overlay inside `.client`:
 - wordmark and icon, the one-line premise, and a `Start Run` primary action;
 - the three difficulty buttons (shared `.mode-btn` component with the Game menu) plus a
   one-line description of the selected mode;
-- six destinations: Records, Splits, Achievements (with `n / 15`), Controls, About, Quit;
+- six destinations (seven since the custom-stage addition): Records, Splits,
+  Achievements (with `n / 15`), Custom Stage, Controls, About, Quit;
 - a live stats panel: best score, fastest Dawn, Dawns, all read from the same `records`
   object the Records dialog uses;
 - an attract-mode rain of 14 relay-flavoured words drifting over the soft-focus field. It
   is presentation only, fed by `Math.random`, and never touches the seeded gameplay RNG.
 
 It is not a dialog: it is shown by `body.phase-menu` and hidden by CSS, so opening
-Records/Splits/Achievements on top of it pauses nothing and closing the dialog returns to
-the main screen. `File -> Main Menu`, the pause dialog's Main Menu button and the game-over
+Records/Splits/Achievements/Custom Stage on top of it pauses nothing and closing the dialog
+returns to the main screen. `File -> Main Menu`, the pause dialog's Main Menu button and the game-over
 dialog's Main Menu button call `returnToMenu()`, which abandons the run, clears the board
 and effects, and re-syncs the UI. The title bar reads `Wordfall - Main Menu` in this phase.
 
@@ -701,8 +711,11 @@ per-frame reads were removed before release:
   the danger glow all read the same result.
 - `drawWords` reuses one module-level `drawOrder` array instead of `state.words.slice()`
   every frame.
-- `updateStatus()` computes a single key over everything the status bar displays and returns
+- `updateStatus()` computes a single key over everything the status bar writes and returns
   early when none of it changed; only the signal strip keeps updating at its own 10 Hz.
+  The key still includes the clock and mode values even though `#statusTime` / `#statusMode`
+  are hidden, and it still includes the practice state when `body.practice` hides the
+  roguelite panels - the elements remain live in the DOM.
 - `window.__wordfall.benchScene(frames)` runs `update(1/60)` + `render()` synchronously for
   a fixed number of frames with a full board, so CPU cost can be measured independently of
   browser vsync. Measured on this machine: ~0.4 ms/frame of CPU with six falling words.
@@ -729,6 +742,8 @@ same complaint.
 | `wordfall.splits` | `{split: [12], cum: [12]}` machine PBs |
 | `wordfall.achievements` | `{achievement_id: unix_ms}` |
 | `wordfall.settings` | `{muted, fx, difficulty}` |
+| `wordfall.custom.stages` | saved practice stages (`[{id, name, text, layout, memorize, loop, updated}]`, max 20; §16) |
+| `wordfall.custom.last` | the last started practice config, used to prefill the editor |
 
 ## 15. Implementation notes (v1.6 - typing-speed demand curve and seed picker)
 
@@ -863,3 +878,266 @@ seed and clears the field; demand rises strictly on every wave; wave 1 is ~16 an
 machine-sensitive M7 perf checks already documented in
 [QA-REPORT-V15.md](QA-REPORT-V15.md) - not a v1.6 regression. The debug hook version is
 `'M9'` and exports `demandWpm` alongside `spawnInterval`.
+
+## 16. Custom stages (practice)
+
+A custom stage is a practice mode built from text the player pastes in: a poem, lyrics,
+vocabulary, a speech, a paragraph in another language. It exists for memorization and
+drills, so it is deliberately **outside the roguelite**: no draft, no cards, no Pressure,
+no lives, no waves and no Dawn. The text, the clock and the accuracy are the whole game.
+It is not a scored mode and it never writes to the record book or the achievements.
+
+### 16.1 Purpose and entry flow
+
+- **Entry:** **Custom Stage…** on the main screen (note "your own text") and
+  **Game → Custom Stage…** both open the same Win95 dialog. It is a dialog over the
+  existing screen, not a separate mode screen; the main screen gains a seventh
+  destination, as recorded in §14.5.
+- **The editor** (`#dlgCustom`) carries a stage name (40 characters, default
+  "Untitled stage"), a paste textarea with a **Clean text** button above it, a **Layout**
+  choice (**Lines** / **Falling words**), a **Memorize** checkbox (lines only; disabled and
+  unchecked while the layout is Falling words), a **Loop** checkbox, a **Clean on start**
+  checkbox (default on), a live meta line, the saved-stage list and
+  **New / Delete / Save / Cancel / Start**. Opening it prefills the last started config,
+  else the first saved stage, else an empty form.
+- **New flow:** **New** empties the name and textareas, resets the layout to Lines and
+  turns Memorize and Loop off (and Clean on start on), and clears the editing id. Save then
+  adds a **new** saved stage instead of overwriting; the saved-stage list is untouched until
+  Save. This is how the editor holds several stages (the cap is 20).
+- **Meta line:** for Lines it shows `N lines to type · N words · N characters`; for
+  Falling words `N falling words · N characters`; when cleanup removed something it
+  appends `· N cleaned away`. The segment/token counts are computed with the same functions
+  the stage will use, so they double as shrink-it-down feedback.
+- **Start** validates and starts immediately, whether or not the stage is saved. It
+  refuses empty text ("Paste some text first."), a line stage with no usable segments
+  ("That text has no usable lines.") and a falling-words stage with no 2-16 letter tokens
+  ("That text has no usable words (2 to 16 letters).").
+- **Save** writes or updates the entry in the saved list (max 20; oldest beyond the cap is
+  dropped). A blank name falls back to the first five words of the cleaned text (or
+  "Untitled stage" if there are none). **Delete** removes only the stage currently loaded
+  into the editor, never the whole list. Neither Save nor Delete starts the stage.
+- **Cancel / Esc** closes the dialog. In the textarea Enter inserts a newline (it is a real
+  editor); Enter in the stage-name field starts the stage.
+- **Completion** opens the **Stage Complete** dialog with the elapsed time, the
+  `done/total` unit line, keys, misses, WPM, accuracy and the stage name, plus
+  **Again** (restart the same config), **Edit Text** (reopen the editor prefilled) and
+  **Main Menu**. Enter is Again.
+
+### 16.2 Layouts
+
+**Lines** - the default.
+
+- The text becomes segments of at most one display row each. The row width is
+  `max(16, floor((max(320, W) - 2 × pad) / charW))` characters, where `W` is the logical
+  field width, `pad` = 32 and `charW` is the measured glyph width; the 16-character floor
+  keeps very narrow windows playable. Wrap is greedy at spaces; a word longer than a row
+  is hard-split across segments.
+- Segments are typed **one at a time**: only the live segment is on the board, the board
+  holds the next one until the current one clears (0.34 s beat), and a blinking caret
+  marks the next glyph. A dashed target frame with corner brackets and progress pips
+  dresses the live line.
+- The line is typed **in full**: spaces, punctuation and letter case all count as
+  characters. Typed keys are compared lowercased, so case is displayed but not tested;
+  Backspace is not a correction key.
+- A cleared line advances the stage; the ordinary clear bookkeeping (score, combo,
+  cleared count) runs underneath but is not shown and is never recorded. The result
+  dialog reports text progress, keys, misses, WPM and accuracy only. The stage completes
+  after the last segment.
+
+**Falling words**
+
+- The text becomes a queue of lowercase tokens: ASCII letters only, punctuation stripped,
+  reading order, each 2-16 letters. Shorter fragments (`a`, `I`, `don't` -> `don`) are
+  dropped.
+- Tokens drop as ordinary falling words at a **fixed** gentle 42 px/s and a fixed 1.45 s
+  spawn interval, with at most six on the board. Difficulty and Pressure do not apply, so
+  the mode is the same on Casual and Nightmare.
+- Every token must be cleared once. A word that reaches the line is removed and pushed
+  back onto the queue (it reappears later); it costs no life and does not count as a
+  wrong key. The stage completes when the last token is cleared.
+
+### 16.3 Text cleanup
+
+Web pastes carry things that are noise in a typing drill: citation markers (`World War
+II[b]`, `...[12]`), bare URLs, Markdown or HTML link syntax, and the navigation/footer
+chrome a whole-page copy drags in. The cleaner (`customCleanText()`) strips them and
+reports what it removed. It runs in two places:
+
+- **Clean text** (`#customCleanBtn`) is a one-shot action: it rewrites the textarea with the
+  cleaned text and shows a receipt in the hint line, e.g.
+  `Cleaned: removed 2 citation markers, 1 links, 3 wiki chrome lines.` If there was
+  nothing to remove it says `Nothing to clean: the text is already plain.` It does not
+  save or start the stage.
+- **Clean on start** (`#customClean`, default on) cleans a copy at the moment the stage
+  starts, so the textarea and any saved copy stay as pasted. It can be switched off per
+  start. `startCustomStage()` is the single cleanup entry point for the editor, **Again**,
+  F2 and the debug hook; when cleaning is on it runs before normalisation and layout
+  preparation.
+
+The cleaner's rules, in order:
+
+1. **HTML.** `<script>`/`<style>` blocks and `<img>` tags are dropped; `<a>` tags are
+   dropped but their labels are kept; other tags are dropped, block-level closing tags
+   (`</p>`, `</div>`, `</li>`, `</h1>`-`</h6>`, `</tr>`, `</blockquote>`, `</section>`,
+   `</td>`, `</th>`) become line breaks and `<br>` becomes a newline. The common named
+   entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&nbsp;`, `&apos;`, `&mdash;`/`&ndash;` →
+   `-`) and decimal/hex numeric entities are decoded to printable ASCII; an entity outside
+   printable ASCII becomes a space, and unknown named entities are left as typed.
+2. **Links and URLs.** Markdown images `![alt](src)` are removed; `[label](url)` and
+   `[label][ref]` keep the label and drop the target. Bare `http://`, `https://`,
+   `ftp://` and `www.` URLs are removed, and empty `()` pairs left behind are tidied away.
+3. **Citation and wiki markers.** A fixed set of bracket markers is removed:
+   `[1]`-`[999]`, a single letter (`[b]`), `[note 3]`, `[nb 1]`, `[citation needed]`,
+   `[edit]`, `[update]`, `[sic]`, `[clarification needed]`, `[dubious]`,
+   `[according to whom?]`, `[who?]`, `[when?]`, `[where?]`, `[why?]`, `[how?]`,
+   `[not verified in body]`, `[page needed]`, `[need quotation to verify]`,
+   `[failed verification]`, `[better source needed]` and `[original research?]`.
+   Unbracketed MediaWiki residue `(listen)`, `(help·info)` and `(info)` is removed too.
+4. **Markdown markup.** ATX headings (`#`-`######`) lose their markers, emphasis
+   (`**bold**`, `__bold__`, `*italic*`) keeps the text, inline code backticks are removed,
+   and leading list markers (`-`, `*`, `•`, `1.`, `1)`) are stripped.
+5. **Wikipedia chrome and the reference tail - gated.** These lines are dropped only when
+   the paste *looks like* a Wikipedia copy, defined as at least one citation marker
+   removed above or the text still containing the literal word "Wikipedia". Then:
+
+   - lines whose whole trimmed lowercased text is a known chrome label (`Jump to content`,
+     `Main page`, `Contents`, `Current events`, `Random article`, `About Wikipedia`,
+     `Contact us`, `Donate`, `Contribute`, `Help`, `Learn to edit`, `Community portal`,
+     `Recent changes`, `Upload file`, `Tools`, `What links here`, `Related changes`,
+     `Special pages`, `Permanent link`, `Page information`, `Cite this page`,
+     `Download as PDF`, `Printable version`, `Languages`, `Search`, `Create account`,
+     `Log in`, `Privacy policy`, `Disclaimers`, `Code of Conduct`, `Mobile view`,
+     `Wikimedia Foundation`, `Powered by MediaWiki`, and the rest of `WIKI_CHROME`) are
+     removed;
+   - footer patterns `Retrieved from …`, `This page was last edited on …`,
+     `Text is available under the Creative Commons …` and `Wikimedia Foundation …` are
+     removed;
+   - every line starting with a `^` reference marker is removed as the reference tail.
+
+   Ordinary prose that merely names a topic keeps its own lines: the gate is what keeps
+   the cleaner from eating a speech or a vocabulary list.
+6. **Tidy.** Spaces before punctuation are collapsed, runs of spaces and trailing spaces are
+   removed, and three or more consecutive newlines become two.
+
+The cleaner counts removals per category (`citations`, `links`, `urls`, `markup`, `chrome`,
+`references`) and returns `{text, stats, removed}`; `removed` is their sum. That total is
+what the meta line's `· N cleaned away`, the Clean button receipt and the in-game
+`TEXT CLEANED · N ITEMS REMOVED` popup (shown when a cleaned start removed something) all
+report. From the console, `window.__wordfall.custom.clean(text)` returns the same object.
+
+Cleanup is optional by design: **saved stages store the textarea text, normalised** - not
+the clean-on-start copy - so cleaning is re-evaluated on every start and can be switched
+off later. An explicit **Clean text** rewrites the textarea literally, so that edit is
+saved as-is if Save follows. A blank name is derived from the cleaner's output, so citation
+junk never becomes the title - including a start with no name while Clean on start is off,
+which still uses the cleaned text for the fallback. The 12,000-character cap applies after
+cleanup and normalisation.
+
+### 16.4 Memorize
+
+- Lines only. A freshly spawned line is fully visible for a **3.5 s preview**, or until
+  the first correct key commits, whichever comes first. A countdown is printed above it.
+- After the preview the **untyped remainder renders as dots** under a persistent
+  "TYPE FROM MEMORY" cue; the typed prefix stays visible letter by letter, so the player
+  gets immediate confirmation and no second read of the text.
+- The checkbox is forced off for Falling words (the UI disables it, and the config
+  normaliser also clears it for that layout).
+
+### 16.5 Loop
+
+- When a stage completes with **Loop** on, the same config restarts instead of opening
+  the result dialog: the pass counter increments, the board, queue, progress and timer
+  state reset, and a `LOOP n` callout plus ring marks the new pass. Every pass is timed
+  from the stage start; the clock is not reset between passes.
+- There is no result screen while looping. Leaving the loop means pausing or abandoning
+  the stage (pause dialog / File -> Main Menu); the last config is still prefilled next
+  time.
+
+### 16.6 Practice rules, and why they bypass the roguelite
+
+A custom stage is not a run with modifiers; it is a separate update and scoring path:
+
+- `startCustomStage()` calls `reset()` and then attaches `state.custom`. `reset()` clears
+  `state.custom` itself, so a normal run can never inherit practice state. The standard
+  `update()` routes to `updateCustom()` and returns before Pressure, spawning, waves,
+  flares, waves-clear beats and difficulty logic.
+- **No lives:** `hitGround()` sends a custom word to `customMiss()` instead of losing a
+  Life. **No game over:** there is no lives check and no "Signal Lost" in this mode.
+- **No cards, shields, drafts or Pressure:** the deck starts empty, shields start at 0 and
+  nothing grants any, `beginDraft()`/`skip()` are never reached, and the practice board
+  never reads `pressure()`.
+- **Own HUD, no roguelite readouts:** `body.practice` collapses the status bar to the single
+  wide panel, which reads `Practice` (`Stage complete` on the result beat). The Combo,
+  Score, Wave, Lives, Shields, Heat and Pressure panels are hidden (still populated in the
+  DOM), and the toolbar deck field and its separator disappear. The signal strip becomes
+  the practice readout: its labels are `TIME` / `LINE` (or `WORDS`) / `STAGE`, showing the
+  elapsed time, `done / total`, and the stage name; the sub-lines carry one fact each -
+  `Loop n` on the left while looping, `Memorize` in the centre while it is on, and the
+  layout name (`Lines` / `Falling words`) on the right.
+- **No records, splits or achievements:** `recordRun()` and `evaluateAchievements()` are
+  no-ops while `state.custom` is set (§16.9). There is no seeded run either: `reset()`
+  reseeds the cosmetic RNG, but the stage content is deterministic pasted text.
+- **Completion stats** use the same formulas as the roguelite result screens:
+  **WPM = keys / 5 per minute of playing time** (`state.runSec`, which pauses with the
+  game and stops when the Stage Complete dialog opens) and
+  **accuracy = keys / (keys + misses)**, where `misses` counts wrong keystrokes
+  (`state.mistakes`). A dropped falling word is recycled and is deliberately not a miss.
+- The pause phase still works: Esc pauses and Enter/Esc resumes; the run clock is frozen
+  while paused, exactly as in a normal run.
+
+### 16.7 Caps and normalisation
+
+| Cap | Value | Applies to |
+| --- | --- | --- |
+| Text length | 12,000 characters | after normalisation |
+| Line segments | 400 | Lines layout |
+| Falling-word tokens | 600 | Falling words layout |
+| Token length | 2-16 letters | Falling words layout |
+| Saved stages | 20 | `wordfall.custom.stages` |
+| Stage name | 40 characters | editor and saved records |
+| Preview | 3.5 s | Memorize |
+
+Normalisation runs before any layout work: CRLF becomes LF, tabs and form feeds become
+spaces, every character outside printable ASCII plus newline becomes a space, runs of
+spaces collapse to one, and the result is sliced to 12,000 characters. This keeps a pasted
+PDF from producing a wall of tabs and non-breaking spaces, and keeps word boundaries around
+typographic punctuation. When Clean on start is on, cleanup (§16.3) runs first and
+normalisation then applies to its output; a saved record and a debug-hook config run
+through the same cleaner, normaliser and 40-character name slice.
+
+### 16.8 Persistence
+
+| Key | Shape | Written when |
+| --- | --- | --- |
+| `wordfall.custom.stages` | `[{id, name, text, layout, memorize, loop, updated}]`, max 20; `text` is the normalised textarea text | Save / Delete |
+| `wordfall.custom.last` | `{name, text, layout, memorize, loop, clean}` | every stage start |
+
+- Both are read once at boot. A missing, malformed or wrong-shaped value degrades to an
+  empty list/`null` rather than an error; corrupt records are skipped individually.
+- Saved entries get an id and an `updated` timestamp. **New** clears the editing id, so the
+  next Save allocates a new id and unshifts a new entry; saving a loaded stage updates it in
+  place. The list is capped at 20 on load and on save (the newest entries survive because a
+  new stage is unshifted to the front and the tail is truncated).
+- Saved stages store the normalised **textarea** text - not the clean-on-start copy and
+  never a `clean` flag - so cleanup is re-evaluated at every start and defaults to on when
+  a saved stage is loaded. An explicit **Clean text** rewrite is part of the textarea and
+  is therefore saved as-is. `wordfall.custom.last` does remember the last `clean` choice,
+  because it is the last started config.
+- `wordfall.custom.last` is a convenience, not a save: it is the last *started* config, so
+  an unsaved stage still prefills the editor next launch. Starting a stage never rewrites
+  the saved-stage list.
+- **Saved stages are only removed by the Delete button**, and Delete removes only the
+  loaded/saved stage, never the whole list. There is no "clear text" or implicit deletion
+  path: editing the textarea and starting does not touch a saved entry unless Save is
+  pressed, and abandoning a stage leaves both keys intact.
+
+### 16.9 Records and achievements exclusion
+
+The record book entry point is `recordRun(won)`, called exactly once at game over or Dawn;
+`evaluateAchievements()` runs after scoring events, wave ends, difficulty changes and run
+ends. Both begin with `if (state.custom) return;`, alongside the existing headless-sim
+guard. Combined with the practice update path, this means a custom stage cannot update
+`wordfall.records`, `wordfall.splits` or `wordfall.achievements`, cannot unlock a toast,
+and cannot set a best score or best wave - even if its token count or clear count would
+otherwise trip an achievement test. The completion dialog is the only reward, and that is
+intentional: practice should not inflate the roguelite ladder.

@@ -3,6 +3,54 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.7.0 - custom stages, text cleanup and one HUD
+
+- **Custom stages.** **Custom Stage…** on the main screen and in the Game menu opens a
+  Win95 editor: paste any text, name it, pick **Lines** or **Falling words**, and
+  optionally **Memorize** or **Loop**. Up to 20 saved stages live on this machine and
+  the editor prefills the last stage you started.
+- **New** clears the editor and drops the editing id, so Save adds another stage instead
+  of overwriting the loaded one; the cap stays at 20. A blank stage name falls back to the
+  first five words of the cleaned text, so an unnamed list of stages is still readable.
+  **Delete** still removes only the stage that is loaded.
+- **Smart text cleanup.** **Clean text** rewrites the paste and reports what it removed:
+  citation markers (`[1]`, `[b]`, `[note 3]`, `[citation needed]`...), bare URLs,
+  Markdown/HTML links (labels kept), HTML tags and entities, emphasis/headings/list
+  markers, `(listen)` residue, and - only when the paste looks like a Wikipedia copy - the
+  navigation/footer chrome and the `^` reference tail. **Clean on start** (default on) runs
+  the same pass at every start; when it removes something, the stage opens with
+  `TEXT CLEANED · N ITEMS REMOVED`.
+  Saved stages keep the textarea text, so cleanup stays an optional per-start choice (an
+  explicit Clean text edit is saved as-is); from the console,
+  `window.__wordfall.custom.clean(text)` returns `{text, stats, removed}`.
+- **Lines layout.** The text is split into single-row segments, wrapped greedily at word
+  boundaries (a word longer than a row is hard-split), and typed one at a time with a
+  blinking caret, a dashed target frame and progress pips. Spaces, punctuation and letter
+  case are typed in full; the comparison itself is case-insensitive.
+- **Falling words layout.** The text becomes a queue of 2-16 letter lowercase words
+  (punctuation stripped), dropped at a fixed gentle 42 px/s with a 1.45 s spawn interval
+  and at most six on the board. Every word must be cleared; a word that reaches the line
+  is put back in the queue instead of costing a life.
+- **Memorize** shows each new line for a 3.5 s preview (or until the first key), then
+  renders the untyped remainder as dots under a "TYPE FROM MEMORY" cue; typed letters
+  stay visible. **Loop** restarts the same stage on completion, counting passes.
+- **Practice, not progression.** No cards, no lives, no Pressure, no waves and no Dawn.
+  Completion shows time, keys, misses, WPM and accuracy. Records, splits and achievements
+  are untouched, and there is no game over.
+- **Caps and storage.** 12,000 characters, 400 line-segments, 600 falling words, token
+  length 2-16, 20 saved stages. Saved stages live in `wordfall.custom.stages` and the
+  last started config in `wordfall.custom.last`; only the Delete button removes a stage.
+- **One HUD, one fact.** The signal strip is now the only visible run clock and mode
+  readout (`#statusTime` / `#statusMode` are hidden but still updated in the DOM), the
+  status main line no longer repeats the combo, and a practice stage collapses the status
+  bar to a single `Practice` panel, hides the toolbar deck field and separator, and trims
+  the strip sub-labels to `Loop n` (left, looping only), `Memorize` (centre, on only) and
+  `Lines` / `Falling words` (right).
+- **Tests** - `tools/qa-custom.mjs` (124 checks) covers the entry points and dialog validation, both
+  layouts, memorization, looping, pause / F2, the result stats, save-load-reload-delete,
+  the New / multi-stage flow, the cleaner rules and clean-on-start, the single-HUD rules,
+  and the promise that practice never touches the roguelite record book or achievements.
+
 ## v1.6.0 - typing-speed balance and seed picker
 
 - **The balance curve is derived from typing speed.** Spawn intervals now come from an

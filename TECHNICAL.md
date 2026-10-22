@@ -37,14 +37,38 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
   per-wave PBs in `localStorage`, fifteen achievements with Win95 toasts, and three
   difficulty modes that scale fall speed, spawn interval and starting lives. The empty band
   below the danger line is now the signal strip: a DOM readout (crisp above the soft-focus
-  canvas) for the clock, this-wave split, wave PB and mode. No rule reads any of it and the
-  headless sim skips the whole layer, so the balance numbers are unchanged.
+  canvas) for the clock, this-wave split, wave PB and mode. It is the **only** visible run
+  clock and mode readout: `#statusTime` / `#statusMode` are hidden in `style.css` but stay
+  in the DOM (and keep their text) for tests and internals, and the status main line no
+  longer repeats the combo - the Combo panel owns that number. A practice stage adds
+  `body.practice`, collapsing the status bar to one panel and trimming the strip labels
+  (see [Presentation notes](#presentation-notes)). No rule reads any of it and the headless
+  sim skips the whole layer, so the balance numbers are unchanged.
 
 - **Main screen (v1.5)** - the `menu` phase is a full title screen (`#mainScreen`) inside the
-  playfield: wordmark, Start Run, difficulty, six destinations, machine bests and a
+  playfield: wordmark, Start Run, difficulty, seven destinations (Custom Stage was added
+  after the six the v1.5 screen shipped with), machine bests and a
   presentation-only attract-mode word rain. It is a DOM overlay shown by `body.phase-menu`,
   not a modal, so the existing dialogs open on top of it; `returnToMenu()` is the shared
   path back from File, pause and game over.
+- **Custom stages (v1.7)** - a practice mode built from pasted text: no cards, no
+  lives, no Pressure and no waves. The `CUSTOM` block near the top of `game.js` owns every
+  constant (12,000-character text cap, 400 line segments, 600 tokens, 2-16 letter tokens,
+  20 saved stages, 3.5 s memorize preview, 42 px/s, 1.45 s spawn, six on the board).
+  `startCustomStage()` calls `reset()` (which clears `state.custom`) and then attaches the
+  live stage object to `state.custom`; the practice phase is `playing` and completion sets
+  `customdone`. `update()` routes to `updateCustom()` and returns before Pressure, the
+  spawn curve and the wave logic, `hitGround()` recycles a missed falling word instead of
+  taking a life, and `recordRun()` / `evaluateAchievements()` return early while
+  `state.custom` is set. **New** (`#customNew`) clears the editor and the editing id so
+  Save appends a new stage instead of updating, and blank names fall back to the first
+  five words of the text (the cleaned text when cleanup is on; a start always derives the
+  fallback from the cleaner's output). **Clean text** (`#customCleanBtn`) and **Clean on
+  start** (`#customClean`, default on) share `customCleanText()`, whose `WIKI_CHROME` set
+  gates the Wikipedia nav/footer lines; `startCustomStage()` is the single cleanup entry
+  point, the `clean` flag rides on the config and `wordfall.custom.last`, and saved stages
+  keep the normalised textarea text (an explicit Clean text edit is literal). Storage keys
+  and the debug hook are documented below.
 - **Frame budget (v1.5)** - the target set is computed once per rendered frame (the cache is
   active only while `render()` runs, so input events always see fresh state), the word draw
   order reuses one scratch array, and the status bar early-outs unless a displayed value
@@ -63,7 +87,8 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
   fall speed all read Pressure, so skipping does not dodge escalation.
 - **Dawn** at the end of wave 12 wins the run; play continues in endless mode, score-only.
 - **Run clock** advances only while the board is live (not paused, drafting, on the Dawn or
-  result screen, or during the wave-clear beat). **Wave split** = clock at the tenth clear
+  result screen, or during the wave-clear beat), and the signal strip is its only visible
+  readout. **Wave split** = clock at the tenth clear
   minus the clock when that wave began. The fastest split and cumulative time for each of
   waves 1-12 are kept per machine; endless waves are timed but not stored.
 - **Achievements** - fifteen global unlocks (first clear, combo 10/25, waves 5/12, Dawn,
@@ -123,6 +148,24 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
 - **Records** - lifetime best score / wave / combo, runs, Dawns, words cleared and fastest
   Dawn, kept in `localStorage` (`wordfall.records`) on this machine. Open with
   Game → Records…; sound on/off is stored in `wordfall.settings`.
+- **Custom stages** - pasted text becomes either **Lines** (segments of at most one
+  display row, greedy wrap at word boundaries with long words hard-split, one segment at
+  a time typed in full - spaces, punctuation and displayed case included; key comparison
+  is case-insensitive) or **Falling words** (lowercase `[a-z]+` tokens of 2-16 letters in
+  reading order, fixed 42 px/s and 1.45 s spawn, at most six on board). Memorize previews
+  a line for 3.5 s or until the first key, then renders the untyped remainder as dots with
+  a `TYPE FROM MEMORY` cue; Loop restarts the same config and increments `pass`. A missed
+  falling word is requeued, never fatal. Completion reports time, keys, misses, WPM
+  (`keys / 5` per minute) and accuracy (`keys / (keys + misses)`). Records, splits and
+  achievements are not touched. Saved stages live in `wordfall.custom.stages` (max 20) and
+  the last started config in `wordfall.custom.last`. **New** empties the form and clears
+  the editing id so Save adds another stage (cap 20); **Delete** removes only the loaded
+  one. **Clean text** / **Clean on start** strip citation markers (`[1]`, `[b]`,
+  `[note 3]`, `[citation needed]`...), bare URLs, Markdown/HTML links (labels kept), HTML
+  tags/entities and Markdown markup, plus - gated on the paste looking like a Wikipedia
+  copy (a citation marker was removed or "Wikipedia" appears) - `WIKI_CHROME` lines,
+  footer lines and the `^` reference tail. Saved stages store the normalised textarea text,
+  so the cleaner runs again on every start unless an explicit Clean text was saved.
 
 ## Presentation notes
 
@@ -146,7 +189,16 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
   playfield - exactly the `CFG.groundPad / H` band below the danger line. It stays crisp
   above the soft-focus scene, is pointer-events none, and updates at most ten times a second
   (a cached key skips per-frame DOM writes). The wave-split flash and the wave-clear title
-  card are deliberately in different places so the two celebrations cannot stack.
+  card are deliberately in different places so the two celebrations cannot stack. It is the
+  **only visible run clock and mode readout**: `#statusTime` and `#statusMode` are
+  `display: none` globally but remain in the DOM and are still written by `updateStatus()`
+  for tests, and the status main line carries only state flags (`REVERSE`, `TUNNEL`,
+  `DECOY - WAIT`) rather than the combo. In a practice stage `body.practice` collapses the
+  status bar to the wide `Practice` / `Stage complete` panel, hides the combo, score, wave,
+  lives, shields, heat and pressure panels plus the toolbar deck field and its separator,
+  and relabels the three strip cells `TIME` / `LINE` (or `WORDS`) / `STAGE` with one
+  sub-fact each: `Loop n` on the left while looping, `Memorize` in the centre while it is
+  on, and `Lines` / `Falling words` on the right.
 
 
 ## Files
@@ -166,6 +218,7 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
 | `SPEC.md` | design doc, cards, milestones, tuning targets |
 | `tools/smoke.mjs` | Playwright smoke test - drives the real UI and asserts M1-M7 rules + v1.6 seed/curve + effects/perf |
 | `tools/qa-v15.mjs` | Playwright v1.5 acceptance - clock, splits, achievements, difficulty, decoy presentation, long words |
+| `tools/qa-custom.mjs` | Playwright custom-stage acceptance - editor, Lines/Falling words, memorize, loop, save/load/delete, New/multi-stage, text cleanup, isolation |
 | `tools/bot.mjs` | headless WPM bot - asserts the v1.6 balance cells |
 | `tools/balance-lab.mjs` | card-power + draft-economy lab (baseline/cards/offers/policies/CFG phases); CFG-proxy rows ported to the v1.6 demand keys but not re-run |
 | `tools/preview-juice.mjs` | visual preview harness - stages a board and writes `shots/juice-*.png` |
@@ -249,6 +302,7 @@ records live in `%LOCALAPPDATA%\Wordfall`, so reinstalling keeps them.
 ```
 node tools/smoke.mjs
 node tools/qa-v15.mjs
+node tools/qa-custom.mjs
 node tools/bot.mjs --seeds 100
 node tools/bot.mjs --seeds 400
 ```
@@ -273,8 +327,15 @@ status-bar reset), clock behaviour under pause/draft, wave splits and PB persist
 signal strip readout, the fifteen achievements (unlock, toast, persistence, dialog), all
 three difficulty modes, decoy-target presentation, every 10-letter word clearing under
 Reverse and Tunnel, the 9+ letter fall-speed relief, and the synchronous frame-CPU budget
-(`benchScene`); it still passes 56/56 on v1.6. `bot.mjs` runs the in-page simulator at
-40/60/80 WPM with random or skipped drafts and asserts the v1.6 acceptance cells at 100 and
+(`benchScene`); it still passes 56/56 on v1.6. `qa-custom.mjs` is the custom-stage
+acceptance pass: the entry points and dialog validation, both layouts via the debug hook,
+the Memorize preview and hide, Loop pass counting, pause / F2 restart, the result stats,
+save-load-reload-delete through the two `localStorage` keys, the New / multi-stage flow
+(the cap, derived names, add-don't-overwrite, delete-only-loaded), the cleaner rules
+(citation markers, URLs, Markdown/HTML, wiki gating and receipt totals), clean-on-start
+and the Clean text UI, and the record-book / achievement isolation. `bot.mjs` runs the
+in-page simulator at 40/60/80 WPM with random or skipped drafts and asserts the v1.6
+acceptance cells at 100 and
 400 seeds: 40 skip always dies with median death wave 7-9, 60 skip always dies with median
 10-12, 60 random Dawn 30-50%, 80 random Dawn >70%. `tools/balance-lab.mjs` reproduces the
 card-power and draft-offer measurements in [BALANCE-LAB.md](BALANCE-LAB.md); its CFG-proxy
@@ -296,7 +357,14 @@ BALANCE-LAB numbers remain the M7/v1.5 historical baseline.
 `demandWpm()`, `baseSpeedNow()`, `nextChar()`, `visibleCount()`, `wordRange()`,
 `bucketPressure()`,
 `isFake()`, `difficulty()`, `setDifficulty(id)`, `cycleDifficulty()`,
-`evaluateAchievements()`, `fmtSplit()`, `sim(opts)`, and `rng()`.
+`evaluateAchievements()`, `fmtSplit()`, `sim(opts)`, and `rng()`. The custom-stage hook is
+nested at `window.__wordfall.custom`: `stages()` (saved records; each `text` is truncated
+to 120 characters for inspection), `last()`, `start(config)`, `open(prefill)`, `state()`,
+`segments(text)`, `tokens(text)`, `counts(text)`, `clean(text)`, `config(config)` and
+`max` (the live `CUSTOM` object). `clean(text)` returns `{text, stats, removed}` using the
+same cleaner as the editor (`stats` breaks removals into `citations`, `links`, `urls`,
+`markup`, `chrome`, `references`). `start()` returns `false` when the text produces no
+playable segments or tokens; `state()` is `null` outside a practice stage.
 
 `sim({ wpm, mode: 'random'|'skip', seed, maxSec, mistakeRate, draftPauseSec, grant })`
 runs a full run synchronously on a virtual clock and returns
@@ -339,6 +407,11 @@ Split's cadence lives in `splitEvery()` (5th spawn at tier I, 3rd at tier II) an
 rarity curve lives in `slotRareChance()`, not in `CFG`. The shipped numbers are tuned so
 `tools/bot.mjs` passes; if you change the curve or the cards, rerun it (and
 `tools/balance-lab.mjs --phase cards` to re-rank the card pool).
+
+The custom-stage numbers are deliberately **not** in `CFG`: the `CUSTOM` block owns the
+practice caps, the 3.5 s memorize preview, the 42 px/s fall speed and the 1.45 s spawn
+interval. Practice bypasses the Pressure curve and the difficulty multipliers, so tuning
+the run balance does not move a custom stage, and vice versa.
 
 ## Measured balance
 

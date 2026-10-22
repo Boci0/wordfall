@@ -711,6 +711,28 @@ body.phase-menu .strip-hud { opacity: 0; }
   min-width: 0;
 }
 
+/* One readout per fact: the signal strip already owns the run clock and the
+   mode, so the status bar does not repeat them. (The elements stay in the DOM
+   because tests and the internals still read them.) */
+#statusTime,
+#statusMode {
+  display: none;
+}
+
+/* Practice stages have their own HUD: the strip carries time, progress and the
+   stage name; the status line is one state panel; there is no deck to show. */
+body.practice #statusCombo,
+body.practice #statusScore,
+body.practice #statusWave,
+body.practice #statusLives,
+body.practice #statusShields,
+body.practice #statusHeat,
+body.practice #statusPressure,
+body.practice #deckField,
+body.practice #toolbar .tool-sep {
+  display: none;
+}
+
 /* ── Modal dialogs ───────────────────────────────────────────────────────── */
 .modal-layer {
   position: absolute;
@@ -1763,4 +1785,217 @@ body.embedded .app.maximized {
 
   .fx-overlay,
   .draft-card { transition: none; }
+}
+
+/* ── Custom Stage ───────────────────────────────────────────────────────── */
+/* A practice editor: one name field, one monospace textarea, a layout choice
+   and two toggles. Sized so the whole dialog clears an 800px-tall window. */
+.dlg-custom {
+  width: 560px;
+  max-height: calc(100% - 24px);
+}
+
+.dlg-custom .dialog-body { padding: 10px 12px 4px; }
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 8px;
+}
+
+/* Same sunken single-line well as the seed field on the main screen. */
+.custom-name {
+  width: 100%;
+  height: 21px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--white);
+  border: none;
+  outline: none;
+  box-shadow:
+    inset 1px 1px var(--shadow),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--dark),
+    inset -2px -2px var(--light);
+}
+
+.custom-name:focus { outline: 1px dotted var(--dark); outline-offset: -3px; }
+.custom-name::placeholder { color: var(--disabled); }
+
+.custom-text-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.custom-text-head .main-label { margin-bottom: 3px; }
+
+.custom-clean {
+  min-width: 0;
+  height: 19px;
+  margin-bottom: 3px;
+  padding: 0 7px 0;
+  font-size: 10px;
+}
+
+.custom-text {
+  display: block;
+  width: 100%;
+  height: 160px;
+  min-height: 96px;
+  max-height: 280px;
+  margin: 0 0 8px;
+  padding: 3px 5px;
+  resize: vertical;
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--white);
+  border: none;
+  outline: none;
+  box-shadow:
+    inset 1px 1px var(--shadow),
+    inset -1px -1px var(--white),
+    inset 2px 2px var(--dark),
+    inset -2px -2px var(--light);
+}
+
+.custom-text:focus { outline: 1px dotted var(--dark); outline-offset: -3px; }
+.custom-text::placeholder { color: var(--disabled); }
+
+.custom-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 24px;
+}
+
+.custom-option {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.custom-option .main-label { margin-bottom: 3px; }
+
+/* Checks sit on the same baseline as the LAYOUT buttons beside them. */
+.custom-checks {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding-top: 15px;
+}
+
+.custom-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.custom-check input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  flex: 0 0 13px;
+}
+
+.custom-meta {
+  margin: 8px 0 0;
+  min-height: 15px;
+  font-size: 10px;
+  line-height: 15px;
+  color: #404040;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Saved stages: flat Win95 list buttons inside a sunken well. */
+.custom-saved {
+  margin: 6px 0 0;
+  max-height: 92px;
+  overflow-y: auto;
+  padding: 2px;
+  background: var(--white);
+  box-shadow: inset 1px 1px var(--shadow), inset -1px -1px var(--white);
+}
+
+.custom-saved:empty { display: none; }
+
+.custom-saved-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 2px 5px;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.custom-saved-item + .custom-saved-item { margin-top: 1px; }
+
+.custom-saved-item:hover,
+.custom-saved-item.selected {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.custom-saved-item.selected {
+  outline: 1px dotted var(--white);
+  outline-offset: -1px;
+}
+
+.custom-saved-empty {
+  padding: 4px 5px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--disabled);
+}
+
+.dlg-custom .fine-print {
+  margin: 8px 0 0;
+  line-height: 1.35;
+}
+
+/* Disabled controls keep the Win95 etched-grey look. */
+.custom-name[disabled],
+.custom-text[disabled] {
+  background: var(--face);
+  color: var(--disabled);
+}
+
+#dlgCustom .mode-btn[disabled],
+#dlgCustom .custom-check input[disabled] + span {
+  color: var(--disabled);
+  text-shadow: 1px 1px 0 var(--white);
+}
+
+#dlgCustom .mode-btn[disabled] { cursor: default; }
+
+#dlgCustom .custom-saved-item[disabled] {
+  color: var(--disabled);
+  background: transparent;
+  cursor: default;
+}
+
+/* Short windows: trim the editor so the dialog still clears the status bar. */
+@media (max-height: 700px) {
+  .dlg-custom { width: 520px; }
+  .custom-text { height: 120px; min-height: 80px; }
+  .custom-saved { max-height: 68px; }
 }
