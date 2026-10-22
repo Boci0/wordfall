@@ -1232,6 +1232,12 @@ body.practice #toolbar .tool-sep {
   margin: 3px 2px;
 }
 
+/* Phone status bar: the five readouts that matter share the width evenly. */
+@media (max-width: 720px) {
+  #statusMain, #statusHeat, #statusPressure { display: none; }
+  .status-bar .status-panel { flex: 1 1 0; padding: 3px 2px 2px; font-size: 10px; text-align: center; }
+}
+
 /* A modal dialog turns the menu bar and toolbar into an inert backdrop,
    Win95-style - but the title-bar buttons (minimize / maximize / close) stay
    live on purpose: locking them while a dialog is up is infuriating when you

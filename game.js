@@ -326,6 +326,9 @@
   const scene = document.createElement('canvas');
   const sctx = scene.getContext('2d');
   const SCENE_SCALE = 0.55;      // lower = heavier blur + faster; raise for clarity
+  // On a touchscreen the sink doubles as the keyboard opener for every run, and
+  // the playfield renders sharp at device pixels with a larger minimum scale.
+  const touchPrimary = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   let ctx = out;                 // active context: scene while drawing, out for the blit
 
   // Practice-only "Sharp text": render the scene 1:1 instead of at 0.55 and
@@ -386,19 +389,24 @@
     const viewH = canvas.clientHeight || window.innerHeight;
     // The rules live in a fixed 800-unit-tall logical playfield, uniformly
     // scaled to the window (fall times stay identical at any window size).
-    const scale = Math.max(0.5, viewH / 800);
+    // A phone with the keyboard up leaves a board far shorter than 800px; below
+    // the minimum scale the playfield gets shorter (H < 800) instead of the
+    // text shrinking and squashing. Word speed already follows H.
+    const scale = Math.max(touchPrimary ? 0.85 : 0.5, viewH / 800);
     W = viewW / scale;
-    H = 800;
+    H = Math.round(viewH / scale);
 
-    // Output at 1:1 CSS pixels. The scene is upscaled into it anyway, so a 2x
-    // backing store would only multiply the blit cost for no visible gain.
-    canvas.width = Math.max(1, Math.round(viewW));
-    canvas.height = Math.max(1, Math.round(viewH));
+    // Output at 1:1 CSS pixels on desktop: the scene is upscaled into it anyway,
+    // so a 2x backing store would only multiply the blit cost. A phone is small
+    // and soft text there is unreadable, so it draws at device pixels.
+    const px = touchPrimary ? Math.min(2, window.devicePixelRatio || 1) : 1;
+    canvas.width = Math.max(1, Math.round(viewW * px));
+    canvas.height = Math.max(1, Math.round(viewH * px));
     out.setTransform(1, 0, 0, 1, 0, 0);
     out.imageSmoothingEnabled = true;
     out.imageSmoothingQuality = 'low';
 
-    const sceneScale = sharpPractice() ? 1 : SCENE_SCALE;
+    const sceneScale = touchPrimary ? px : sharpPractice() ? 1 : SCENE_SCALE;
     scene.width = Math.max(120, Math.round(viewW * sceneScale));
     scene.height = Math.max(80, Math.round(viewH * sceneScale));
     sctx.setTransform(scene.width / W, 0, 0, scene.height / H, 0, 0);
@@ -5283,11 +5291,13 @@
   // Chrome/WebView2 route composition (pinyin -> 汉字) only to a focused text
   // field. Custom stages park focus in a 1px invisible sink and consume the
   // committed string; plain Latin typing still arrives through keydown.
-  // On a touchscreen the sink doubles as the keyboard opener for every run.
-  const touchPrimary = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-
   function focusImeSink() {
     if (!ui.imeSink) return;
+    // A password field makes a phone keyboard send each letter as it is tapped
+    // instead of composing whole words. Practice stages keep a text field so IME
+    // input (pinyin, Japanese, Korean) still works.
+    const type = touchPrimary && !state.custom ? 'password' : 'text';
+    if (ui.imeSink.type !== type) ui.imeSink.type = type;
     try { ui.imeSink.focus({ preventScroll: true }); } catch (e) {
       try { ui.imeSink.focus(); } catch (e2) { /* ignore */ }
     }

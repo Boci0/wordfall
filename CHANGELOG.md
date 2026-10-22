@@ -3,6 +3,29 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.9.1 - Phone readability fixes
+
+- **Readable playfield on a phone.** With the keyboard up the board is far shorter than the
+  800-unit logical playfield, and the old minimum scale of 0.5 drew everything half-size and
+  squashed vertically. On a touchscreen the minimum scale is now 0.85 and the playfield
+  height follows the screen (`H = height / scale`) instead of the text shrinking. Word
+  speed already scales with `H`, so a fall takes about as long as before.
+- **Sharp text on touch.** The soft-focus 0.55x scene upscale is off on touch devices, and
+  the canvas draws at the device pixel ratio (capped at 2), so words, the target frame and
+  the signal strip stay crisp. Desktop rendering is unchanged.
+- **Phone status bar.** Ten panels no longer fight for one row. On narrow screens the state
+  text, Heat and Pressure are hidden and Combo, Score, Wave, Lives and Shields share the
+  width evenly, so none of them is cut off.
+- **Letter-by-letter keyboard input.** Outside practice stages the hidden input is a
+  password-type field on touch devices, which stops keyboards such as Gboard from composing
+  whole words, so each letter arrives as it is tapped. Practice stages keep a text field so
+  pinyin, Japanese and Korean IME input still works.
+- **Tests** - `tools/qa-cards.mjs` (64), `qa-custom.mjs` (124), `qa-unicode.mjs` (37) and
+  `qa-v15.mjs` (56) pass unchanged; `smoke.mjs` passes 201 to 202 of 202, the one miss being
+  the known machine-sensitive `M7 perf` long-frame check. The layout was checked at 360 px
+  wide with and without the keyboard; typing from a phone keyboard has not been verified on
+  a physical device.
+
 ## v1.9.0 - Mobile layout and Android app
 
 - **Android app.** A native Android build in `android/`: a thin WebView wrapper around the
