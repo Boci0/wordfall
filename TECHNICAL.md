@@ -54,7 +54,8 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
 - **Custom stages (v1.7)** - a practice mode built from pasted text: no cards, no
   lives, no Pressure and no waves. The `CUSTOM` block near the top of `game.js` owns every
   constant (12,000-character text cap, 400 line segments, 600 tokens, 2-16 letter tokens,
-  20 saved stages, 3.5 s memorize preview, 42 px/s, 1.45 s spawn, six on the board).
+  200 cards, 20 saved stages, 3.5 s memorize preview, 42 px/s, 1.45 s spawn, six on the
+  board).
   `startCustomStage()` calls `reset()` (which clears `state.custom`) and then attaches the
   live stage object to `state.custom`; the practice phase is `playing` and completion sets
   `customdone`. `update()` routes to `updateCustom()` and returns before Pressure, the
@@ -149,23 +150,40 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
   Dawn, kept in `localStorage` (`wordfall.records`) on this machine. Open with
   Game → Records…; sound on/off is stored in `wordfall.settings`.
 - **Custom stages** - pasted text becomes either **Lines** (segments of at most one
-  display row, greedy wrap at word boundaries with long words hard-split, one segment at
-  a time typed in full - spaces, punctuation and displayed case included; key comparison
-  is case-insensitive) or **Falling words** (lowercase `[a-z]+` tokens of 2-16 letters in
-  reading order, fixed 42 px/s and 1.45 s spawn, at most six on board). Memorize previews
+  display row, wrap by measured pixel width with a per-character fallback for scripts
+  without spaces, one segment at a time typed in full - spaces, punctuation, script and
+  displayed case included; key comparison is case-insensitive), **Falling words**
+  (pure-ASCII keeps lowercase `[a-z]+` tokens of 2-16 letters; any other script goes
+  through `Intl.Segmenter` words of 1-16 characters, reading order, fixed 42 px/s and
+  1.45 s spawn, at most six on board), **Cards** (`prompt :: answer` per line, 120/240
+  character caps, 200 cards max) or **Prompts** (`shown :: typed` per line, 80/80 caps,
+  400 prompts max: the cue is drawn above the line and the typed side is played below it,
+  optionally hidden by Memorize). All four use Unicode-preserving sources
+  (`customPlainText()` / `customCardSource()`), not the old ASCII normaliser. Glyph metrics
+  are measured per character (`offsets[]` / `glyphW[]` on the word) with a fast
+  `i * charW` path for pure ASCII, so CJK lines do not overlap. A 1x1 `#imeSink` input is
+  focused during a custom stage to receive IME composition; composing `keydown`s are
+  ignored and `compositionend` feeds `typeChunk()` into `typeLetter()`. Memorize previews
   a line for 3.5 s or until the first key, then renders the untyped remainder as dots with
   a `TYPE FROM MEMORY` cue; Loop restarts the same config and increments `pass`. A missed
-  falling word is requeued, never fatal. Completion reports time, keys, misses, WPM
-  (`keys / 5` per minute) and accuracy (`keys / (keys + misses)`). Records, splits and
-  achievements are not touched. Saved stages live in `wordfall.custom.stages` (max 20) and
-  the last started config in `wordfall.custom.last`. **New** empties the form and clears
+  falling word is requeued, never fatal. A Cards deck is the typing-free path: a card falls
+  to the line, Space reveals, 1/2/3 grade, Again is re-queued four cards later, and
+  Good/Easy retire it; its result screen reports first-try recalls and repeats instead of
+  keys/WPM. **Sharp text** (`settings.crisp`, persisted in `wordfall.settings.crisp`, off
+  by default) renders the scene canvas at 1:1 instead of `SCENE_SCALE` 0.55 while a
+  practice stage is active: `startCustomStage()` re-sizes the scene, and `startNewRun()` /
+  `returnToMenu()` restore the soft focus. Completion on the typing layouts reports time,
+  keys, misses, WPM (`keys / 5` per minute) and accuracy (`keys / (keys + misses)`).
+  Records, splits and achievements are not touched. Saved stages live in
+  `wordfall.custom.stages` (max 20) and the last started config in
+  `wordfall.custom.last`. **New** empties the form and clears
   the editing id so Save adds another stage (cap 20); **Delete** removes only the loaded
   one. **Clean text** / **Clean on start** strip citation markers (`[1]`, `[b]`,
   `[note 3]`, `[citation needed]`...), bare URLs, Markdown/HTML links (labels kept), HTML
   tags/entities and Markdown markup, plus - gated on the paste looking like a Wikipedia
   copy (a citation marker was removed or "Wikipedia" appears) - `WIKI_CHROME` lines,
-  footer lines and the `^` reference tail. Saved stages store the normalised textarea text,
-  so the cleaner runs again on every start unless an explicit Clean text was saved.
+  footer lines and the `^` reference tail. Saved stages store the layout's Unicode textarea
+  text, so the cleaner runs again on every start unless an explicit Clean text was saved.
 
 ## Presentation notes
 
@@ -219,6 +237,8 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
 | `tools/smoke.mjs` | Playwright smoke test - drives the real UI and asserts M1-M7 rules + v1.6 seed/curve + effects/perf |
 | `tools/qa-v15.mjs` | Playwright v1.5 acceptance - clock, splits, achievements, difficulty, decoy presentation, long words |
 | `tools/qa-custom.mjs` | Playwright custom-stage acceptance - editor, Lines/Falling words, memorize, loop, save/load/delete, New/multi-stage, text cleanup, isolation |
+| `tools/qa-cards.mjs` | Playwright Cards acceptance - parser/caps, editor, Space/1/2/3/Enter input, Again rescheduling, timeout, loop, CJK save/reload, Sharp text resolution/persistence, F2, isolation |
+| `tools/qa-unicode.mjs` | Playwright multilingual acceptance - Unicode source, measured-width wrap, `Intl.Segmenter` tokens, IME commits, composing-key suppression, Prompts cue/hide, persistence, New Run restart |
 | `tools/bot.mjs` | headless WPM bot - asserts the v1.6 balance cells |
 | `tools/balance-lab.mjs` | card-power + draft-economy lab (baseline/cards/offers/policies/CFG phases); CFG-proxy rows ported to the v1.6 demand keys but not re-run |
 | `tools/preview-juice.mjs` | visual preview harness - stages a board and writes `shots/juice-*.png` |
@@ -303,6 +323,8 @@ records live in `%LOCALAPPDATA%\Wordfall`, so reinstalling keeps them.
 node tools/smoke.mjs
 node tools/qa-v15.mjs
 node tools/qa-custom.mjs
+node tools/qa-cards.mjs
+node tools/qa-unicode.mjs
 node tools/bot.mjs --seeds 100
 node tools/bot.mjs --seeds 400
 ```
@@ -360,7 +382,10 @@ BALANCE-LAB numbers remain the M7/v1.5 historical baseline.
 `evaluateAchievements()`, `fmtSplit()`, `sim(opts)`, and `rng()`. The custom-stage hook is
 nested at `window.__wordfall.custom`: `stages()` (saved records; each `text` is truncated
 to 120 characters for inspection), `last()`, `start(config)`, `open(prefill)`, `state()`,
-`segments(text)`, `tokens(text)`, `counts(text)`, `clean(text)`, `config(config)` and
+`segments(text)`, `tokens(text)`, `cards(text)`, `cardCounts(text)`, `cardSource(text)`,
+`prompts(text)`, `promptCounts(text)`, `plain(text)`, `typeChunk(str)`,
+`imeFocused()`, `reveal()`, `grade('again'|'good'|'easy')`, `cardKey(key)`, `counts(text)`,
+`clean(text)`, `config(config)` and
 `max` (the live `CUSTOM` object). `clean(text)` returns `{text, stats, removed}` using the
 same cleaner as the editor (`stats` breaks removals into `citations`, `links`, `urls`,
 `markup`, `chrome`, `references`). `start()` returns `false` when the text produces no
@@ -409,8 +434,9 @@ rarity curve lives in `slotRareChance()`, not in `CFG`. The shipped numbers are 
 `tools/balance-lab.mjs --phase cards` to re-rank the card pool).
 
 The custom-stage numbers are deliberately **not** in `CFG`: the `CUSTOM` block owns the
-practice caps, the 3.5 s memorize preview, the 42 px/s fall speed and the 1.45 s spawn
-interval. Practice bypasses the Pressure curve and the difficulty multipliers, so tuning
+practice caps, the 3.5 s memorize preview, the 42 px/s fall speed, the 1.45 s spawn
+interval and the card clock (`cardRecallSec`, `cardRepeatGap`, `cardTimeoutRevealSec`).
+Practice bypasses the Pressure curve and the difficulty multipliers, so tuning
 the run balance does not move a custom stage, and vice versa.
 
 ## Measured balance

@@ -3,6 +3,56 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.8.0 - Cards, Prompts and multilingual practice
+
+- **Cards layout.** Custom Stage gains a third layout for memorization rather than typing.
+  One card per line as `prompt :: answer` (or `prompt => answer`); prompts cap at 120
+  characters, answers at 240, and a deck at 200 cards. Lines without a separator are
+  skipped and reported in the meta line. Nothing is typed: a card costs one thought.
+- **Reveal and grade.** The prompt falls from the top of the board to the line. **Space**
+  flips it to its answer; **1** grades **Again** (the card returns four cards later),
+  **2** or **Enter** grades **Good**, **3** grades **Easy** (both retire the card). A card
+  that reaches the line flips itself, shows its answer for 1.8 s, then auto-grades as
+  Again. The stage completes when every card is retired; **Loop** replays the deck.
+- **The deck remembers in the session.** First-try recalls, repeats and the per-card
+  attempt count drive the rescheduling, and the Stage Complete dialog reports
+  `N/M cards recalled · N first try · N repeats · no typing` - never WPM, keys or
+  accuracy. Like every practice stage, none of it touches records or achievements.
+- **Prompts layout.** A fourth layout for cross-modal drills: one `shown :: typed` per
+  line, so 你好 cues `ni hao`, an English meaning cues the target word, or a definition
+  cues the term. The cue is drawn above the line and the answer typed below it; **Memorize**
+  is the cue's hide switch (3.5 s preview or first key), and with it off the cue stays up.
+- **Any language, with IME.** Lines and Falling words no longer strip non-Latin text: the
+  editor, Save, reload and the playfield keep `你好`, Japanese and Korean. Per-glyph
+  positions use measured advances instead of monospace cells, Lines wrap by measured width
+  and Falling words tokenise with `Intl.Segmenter`. A 1x1 invisible focus sink accepts IME
+  composition, so pinyin/Japanese/Korean input commits into the line as if typed; composing
+  keystrokes never count as misses.
+- **New Run restarts the drill.** The toolbar New Run button (and the File menu) now
+  restarts the practice stage on the board instead of dropping the player into a fresh
+  roguelite run.
+- **Unicode decks.** Cards and Prompts keep their Unicode: the editor, Save, reload and the
+  playfield all preserve `你好 :: ni hao`, and the renderer measures real glyph widths with
+  a CJK-capable font fallback.
+- **Editor and HUD.** A third **Cards** pill and a fourth **Prompts** pill in the Layout
+  row, counts in the meta line, `CARDS` / `PROMPT` in the signal strip,
+  `Custom · Card n` / `Custom · Prompt n` in the window title, and the layout name in the
+  practice strip and toolbar.
+- **Sharp text.** A new practice-only **Sharp text** checkbox in the Custom Stage editor
+  renders the playfield 1:1 instead of at the 0.55× soft-focus upscale, so card prompts,
+  answers and key hints stay readable. The choice is remembered in
+  `wordfall.settings.crisp`, flips a paused drill immediately, and never changes the
+  roguelite's look. The in-stage key legend grew to 16px bold on a dark plate and the
+  `RECALL` / `ANSWER` label to 13px, so the controls read even with Sharp text off.
+- **Tests** - `tools/qa-cards.mjs` (64 checks) covers the card parser and caps, the
+  editor and validation, the real Space/1/2/3/Enter input path, rescheduling, timeout,
+  loop, save/reload with CJK, Sharp text (default soft, full-resolution toggle,
+  persistence, practice-only), F2 restart, pause, and the record-book exclusion.
+  `tools/qa-unicode.mjs` (37 checks) covers Unicode source preservation, measured-width
+  wrapping, `Intl.Segmenter` tokens, IME `compositionend` commits, composing-key
+  suppression, the Prompts cue/hide behaviour, persistence and the New Run restart.
+  `tools/qa-custom.mjs` (124 checks) still passes unchanged.
+
 ## v1.7.0 - custom stages, text cleanup and one HUD
 
 - **Custom stages.** **Custom Stage…** on the main screen and in the Game menu opens a

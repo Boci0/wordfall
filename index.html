@@ -138,6 +138,10 @@
 
       <div class="client" id="client">
         <canvas id="game"></canvas>
+        <!-- Invisible focus sink for IME composition (Chinese, Japanese, Korean).
+             A custom stage focuses it so the OS input method can compose; the
+             game consumes only the committed characters via compositionend. -->
+        <input class="ime-sink" id="imeSink" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-hidden="true" tabindex="-1" />
 
         <div class="fx-overlay" id="fxOverlay" aria-hidden="true"><div class="fx-glow" id="fxGlow"></div><div class="fx-vignette"></div><div class="fx-scanlines"></div><div class="fx-noise"></div></div>
 
@@ -165,7 +169,7 @@
           <div class="main-panel">
             <div class="main-titlebar">
               <span>Wordfall 95 · Relay 12</span>
-              <span class="main-version" id="mainVersion">v1.7.0</span>
+              <span class="main-version" id="mainVersion">v1.8.0</span>
             </div>
             <div class="main-body">
               <div class="main-hero">
@@ -231,7 +235,7 @@
             </div>
             <div class="main-footer">
               <span id="mainHint">Relay 12 &middot; 03:00 &middot; the channel is open</span>
-              <span id="mainFooterRight">Wordfall 1.7.0 &middot; MIT licence</span>
+              <span id="mainFooterRight">Wordfall 1.8.0 &middot; MIT licence</span>
             </div>
           </div>
         </div>
@@ -387,17 +391,20 @@
                   <div class="mode-row" id="customLayout">
                     <button type="button" tabindex="-1" class="mode-btn" data-layout="lines">Lines</button>
                     <button type="button" tabindex="-1" class="mode-btn" data-layout="words">Falling words</button>
+                    <button type="button" tabindex="-1" class="mode-btn" data-layout="cards" title="Reveal-and-grade recall: one card per line as &quot;prompt :: answer&quot;">Cards</button>
+                    <button type="button" tabindex="-1" class="mode-btn" data-layout="prompts" title="Show one thing, type another: one line as &quot;shown :: typed&quot;">Prompts</button>
                   </div>
                 </div>
                 <div class="custom-option custom-checks">
                   <label class="custom-check"><input type="checkbox" id="customMemorize" /> Memorize</label>
                   <label class="custom-check"><input type="checkbox" id="customLoop" /> Loop</label>
                   <label class="custom-check"><input type="checkbox" id="customClean" checked /> Clean on start</label>
+                  <label class="custom-check" title="Practice stages render at full resolution instead of the soft-focus upscale, so card text and key hints stay readable"><input type="checkbox" id="customCrisp" /> Sharp text</label>
                 </div>
               </div>
               <div class="custom-meta" id="customMeta">Paste some text to begin.</div>
               <div class="custom-saved" id="customSaved" aria-label="Saved stages"></div>
-              <p class="fine-print" id="customHint">Practice stage: no cards, no lives. Completing the text shows your time, speed and accuracy.</p>
+              <p class="fine-print" id="customHint">Practice stage: no deck, no lives, no Pressure. Start it and the strip shows your time and progress.</p>
             </div>
             <div class="dialog-buttons">
               <button type="button" tabindex="-1" class="btn" id="customNew">New</button>
@@ -446,7 +453,7 @@
               </svg>
               <div>
                 <div class="about-head">Wordfall for Windows</div>
-                <div class="about-ver">Version 1.7.0 · custom stages edition</div>
+                <div class="about-ver">Version 1.8.0 · custom stages edition</div>
                 <p>Read. Commit. Survive.</p>
                 <p class="fine-print">Relay 12 is a night shift you cannot leave. The broadcast is coming apart one word at a time, and the picture is going with it. Patch the receiver, keep the signal alive, and hold the line until Dawn.</p>
                 <p class="fine-print">Boons are clean patches. Gambits overclock the transmitter. Hexes are corrupted packets that slipped through.</p>

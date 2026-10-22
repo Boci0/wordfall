@@ -686,6 +686,25 @@ body.phase-menu .strip-hud { opacity: 0; }
   background: #000020;
 }
 
+/* The IME focus sink: it has to be a real focusable field for WebView2/Chrome
+   to route composition events, but it must never be visible or clickable. */
+.ime-sink {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  opacity: 0.01;
+  background: transparent;
+  color: transparent;
+  pointer-events: none;
+  z-index: -1;
+  outline: none;
+}
+
 /* ── Status bar ──────────────────────────────────────────────────────────── */
 .status-bar {
   display: flex;

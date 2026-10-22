@@ -2,7 +2,7 @@
 
 A one-screen typing game with a draft-only roguelite layer. No map, no branches.
 
-Status: **M1-M7 implemented**, current build v1.7.0, presented as a Windows 95-era desktop
+Status: **M1-M7 implemented**, current build v1.8.0, presented as a Windows 95-era desktop
 application (browser and native Windows build), plus the Relay 12 background and curve
 smoothing in §11, the M7 impact/draft-balance pass in §12, the native in-app updater in
 §13, the v1.5 score-attack pass in §14, the v1.6 typing-speed curve and seed picker in
@@ -884,8 +884,11 @@ machine-sensitive M7 perf checks already documented in
 A custom stage is a practice mode built from text the player pastes in: a poem, lyrics,
 vocabulary, a speech, a paragraph in another language. It exists for memorization and
 drills, so it is deliberately **outside the roguelite**: no draft, no cards, no Pressure,
-no lives, no waves and no Dawn. The text, the clock and the accuracy are the whole game.
-It is not a scored mode and it never writes to the record book or the achievements.
+no lives, no waves and no Dawn. The text, the clock and the accuracy are the whole game
+on the typing layouts; the **Cards** layout replaces typing with recall and grades
+(§16.10). All layouts accept non-Latin scripts, and the typing layouts take IME input
+(§16.12). It is not a scored mode and it never writes to the record book or the
+achievements.
 
 ### 16.1 Purpose and entry flow
 
@@ -895,9 +898,11 @@ It is not a scored mode and it never writes to the record book or the achievemen
   destination, as recorded in §14.5.
 - **The editor** (`#dlgCustom`) carries a stage name (40 characters, default
   "Untitled stage"), a paste textarea with a **Clean text** button above it, a **Layout**
-  choice (**Lines** / **Falling words**), a **Memorize** checkbox (lines only; disabled and
-  unchecked while the layout is Falling words), a **Loop** checkbox, a **Clean on start**
-  checkbox (default on), a live meta line, the saved-stage list and
+  choice (**Lines** / **Falling words** / **Cards** / **Prompts**), a **Memorize**
+  checkbox (the hide-the-cue switch for Lines and Prompts; disabled and unchecked on the
+  other layouts), a **Loop** checkbox, a **Clean on start** checkbox (default on), a
+  **Sharp text** checkbox (practice-only, default off, remembered in settings; §16.10), a
+  live meta line, the saved-stage list and
   **New / Delete / Save / Cancel / Start**. Opening it prefills the last started config,
   else the first saved stage, else an empty form.
 - **New flow:** **New** empties the name and textareas, resets the layout to Lines and
@@ -905,40 +910,48 @@ It is not a scored mode and it never writes to the record book or the achievemen
   adds a **new** saved stage instead of overwriting; the saved-stage list is untouched until
   Save. This is how the editor holds several stages (the cap is 20).
 - **Meta line:** for Lines it shows `N lines to type · N words · N characters`; for
-  Falling words `N falling words · N characters`; when cleanup removed something it
-  appends `· N cleaned away`. The segment/token counts are computed with the same functions
-  the stage will use, so they double as shrink-it-down feedback.
+  Falling words `N falling words · N characters`; for Cards `N cards · N characters`;
+  for Prompts `N prompts · N characters`; the pair layouts add
+  `· N lines skipped (no ::)` when some lines carry no separator. When cleanup
+  removed something it appends `· N cleaned away`. The segment/token/card counts are
+  computed with the same functions the stage will use, so they double as shrink-it-down
+  feedback.
 - **Start** validates and starts immediately, whether or not the stage is saved. It
   refuses empty text ("Paste some text first."), a line stage with no usable segments
-  ("That text has no usable lines.") and a falling-words stage with no 2-16 letter tokens
-  ("That text has no usable words (2 to 16 letters).").
+  ("That text has no usable lines."), a falling-words stage with no 2-16 letter tokens
+  ("That text has no usable words (2 to 16 letters)."), a card stage with no
+  `prompt :: answer` lines ("That text has no cards. Use one per line: prompt :: answer.")
+  and a prompts stage with no `shown :: typed` lines
+  ("That text has no prompts. Use one per line: shown :: typed.").
 - **Save** writes or updates the entry in the saved list (max 20; oldest beyond the cap is
-  dropped). A blank name falls back to the first five words of the cleaned text (or
-  "Untitled stage" if there are none). **Delete** removes only the stage currently loaded
-  into the editor, never the whole list. Neither Save nor Delete starts the stage.
+  dropped). A blank name falls back to the first five words of the cleaned text, or for
+  Cards to the first card's prompt (or "Untitled stage" if there are none). **Delete**
+  removes only the stage currently loaded into the editor, never the whole list. Neither
+  Save nor Delete starts the stage.
 - **Cancel / Esc** closes the dialog. In the textarea Enter inserts a newline (it is a real
   editor); Enter in the stage-name field starts the stage.
 - **Completion** opens the **Stage Complete** dialog with the elapsed time, the
   `done/total` unit line, keys, misses, WPM, accuracy and the stage name, plus
   **Again** (restart the same config), **Edit Text** (reopen the editor prefilled) and
-  **Main Menu**. Enter is Again.
+  **Main Menu**. Enter is Again. A Cards deck reports recall instead of typing metrics:
+  `done/total cards recalled · N first try · N repeats · no typing` (§16.10).
 
 ### 16.2 Layouts
 
 **Lines** - the default.
 
-- The text becomes segments of at most one display row each. The row width is
-  `max(16, floor((max(320, W) - 2 × pad) / charW))` characters, where `W` is the logical
-  field width, `pad` = 32 and `charW` is the measured glyph width; the 16-character floor
-  keeps very narrow windows playable. Wrap is greedy at spaces; a word longer than a row
-  is hard-split across segments.
+- The text becomes segments of at most one display row each. Wrap is by **measured pixel
+  width** (`max(16 × charW, max(320, W) - 2 × pad)`), so a CJK glyph (roughly two ASCII
+  cells) wraps correctly; it breaks at the last space when there is one, and per character
+  when the script has no spaces (Chinese, Japanese). A word longer than a row hard-splits.
 - Segments are typed **one at a time**: only the live segment is on the board, the board
   holds the next one until the current one clears (0.34 s beat), and a blinking caret
   marks the next glyph. A dashed target frame with corner brackets and progress pips
   dresses the live line.
-- The line is typed **in full**: spaces, punctuation and letter case all count as
+- The line is typed **in full**: spaces, punctuation, case and script all count as
   characters. Typed keys are compared lowercased, so case is displayed but not tested;
-  Backspace is not a correction key.
+  Backspace is not a correction key. Per-glyph positions come from measured advances, so
+  wide script and mixed-script lines do not overlap.
 - A cleared line advances the stage; the ordinary clear bookkeeping (score, combo,
   cleared count) runs underneath but is not shown and is never recorded. The result
   dialog reports text progress, keys, misses, WPM and accuracy only. The stage completes
@@ -946,15 +959,46 @@ It is not a scored mode and it never writes to the record book or the achievemen
 
 **Falling words**
 
-- The text becomes a queue of lowercase tokens: ASCII letters only, punctuation stripped,
-  reading order, each 2-16 letters. Shorter fragments (`a`, `I`, `don't` -> `don`) are
-  dropped.
+- The text becomes a queue of tokens in reading order. Pure-ASCII text keeps the
+  historical tokenizer (lowercase `[a-z]+` words, 2-16 letters; `a`, `I`, `don't` -> `don`
+  are dropped). Text containing another script goes through `Intl.Segmenter` word
+  segmentation, so `你好世界` becomes `你好` / `世界` rather than one long token; letters and
+  combining marks are kept, digits and punctuation dropped, Latin tokens are folded to
+  lowercase and still need 2-16 letters, non-Latin tokens need 1-16 characters.
 - Tokens drop as ordinary falling words at a **fixed** gentle 42 px/s and a fixed 1.45 s
   spawn interval, with at most six on the board. Difficulty and Pressure do not apply, so
   the mode is the same on Casual and Nightmare.
 - Every token must be cleared once. A word that reaches the line is removed and pushed
   back onto the queue (it reappears later); it costs no life and does not count as a
   wrong key. The stage completes when the last token is cleared.
+
+**Cards**
+
+- Each non-empty line is one card, split at the first `::` or `=>` into a **prompt** and
+  an **answer**; lines with no separator, an empty prompt or an empty answer are skipped
+  and counted in the meta line. Prompts cap at 120 characters, answers at 240, decks at
+  200 cards.
+- Cards **keep their Unicode** - `你好 :: ni hao` survives the editor, Save and reload. The
+  prompt is rendered with a CJK-capable fallback font and measured with `measureText`, so
+  mixed scripts wrap correctly.
+- Nothing is typed. A card falls from the top of the board to the line; **Space** flips
+  it to its answer; **1 / 2 / 3** grade **Again / Good / Easy**, and **Enter** is a quick
+  Good. A card that reaches the line flips itself, and after 1.8 s it auto-grades as
+  Again. The stage completes when every card is retired (§16.10).
+
+**Prompts**
+
+- Each non-empty line is `shown :: typed` (or `shown => typed`), the typed counterpart of
+  Cards: the board shows the left side and the player **types** the right side. A line
+  with no separator, an empty side or a side over 80 characters is skipped and counted in
+  the meta line. Caps: 400 prompts.
+- The cue is drawn amber above the line; the answer is never shown, only the typed prefix
+  (green) and dots for the remainder. The typed line uses the normal typing rules, lock-on,
+  combo and result stats.
+- **Memorize** is the cue's hide switch here: on, the cue is visible for the 3.5 s preview
+  (or until the first correct key), then replaced by `TYPE FROM MEMORY`; off, the cue stays
+  up for the whole line. This is the "show one thing, type another, and optionally hide it"
+  drill (§16.11).
 
 ### 16.3 Text cleanup
 
@@ -1025,13 +1069,13 @@ what the meta line's `· N cleaned away`, the Clean button receipt and the in-ga
 `TEXT CLEANED · N ITEMS REMOVED` popup (shown when a cleaned start removed something) all
 report. From the console, `window.__wordfall.custom.clean(text)` returns the same object.
 
-Cleanup is optional by design: **saved stages store the textarea text, normalised** - not
-the clean-on-start copy - so cleaning is re-evaluated on every start and can be switched
-off later. An explicit **Clean text** rewrites the textarea literally, so that edit is
-saved as-is if Save follows. A blank name is derived from the cleaner's output, so citation
-junk never becomes the title - including a start with no name while Clean on start is off,
-which still uses the cleaned text for the fallback. The 12,000-character cap applies after
-cleanup and normalisation.
+Cleanup is optional by design: **saved stages store the textarea text in the layout's
+source form** (§16.8) - not the clean-on-start copy - so cleaning is re-evaluated on every
+start and can be switched off later. An explicit **Clean text** rewrites the textarea
+literally, so that edit is saved as-is if Save follows. A blank name is derived from the
+cleaner's output, so citation junk never becomes the title - including a start with no name
+while Clean on start is off, which still uses the cleaned text for the fallback. The
+12,000-character cap applies after cleanup and the layout's source function.
 
 ### 16.4 Memorize
 
@@ -1040,8 +1084,8 @@ cleanup and normalisation.
 - After the preview the **untyped remainder renders as dots** under a persistent
   "TYPE FROM MEMORY" cue; the typed prefix stays visible letter by letter, so the player
   gets immediate confirmation and no second read of the text.
-- The checkbox is forced off for Falling words (the UI disables it, and the config
-  normaliser also clears it for that layout).
+- The checkbox is forced off for Falling words and Cards (the UI disables it, and the
+  config normaliser also clears it for those layouts).
 
 ### 16.5 Loop
 
@@ -1070,10 +1114,12 @@ A custom stage is not a run with modifiers; it is a separate update and scoring 
   wide panel, which reads `Practice` (`Stage complete` on the result beat). The Combo,
   Score, Wave, Lives, Shields, Heat and Pressure panels are hidden (still populated in the
   DOM), and the toolbar deck field and its separator disappear. The signal strip becomes
-  the practice readout: its labels are `TIME` / `LINE` (or `WORDS`) / `STAGE`, showing the
-  elapsed time, `done / total`, and the stage name; the sub-lines carry one fact each -
-  `Loop n` on the left while looping, `Memorize` in the centre while it is on, and the
-  layout name (`Lines` / `Falling words`) on the right.
+  the practice readout: its labels are `TIME` / `LINE` (or `WORDS`, `CARDS`) / `CUSTOM`,
+  showing the elapsed time, `done / total`, and the stage name; the sub-lines carry one
+  fact each - `Loop n` on the left while looping, `Memorize` in the centre while it is on
+  (Cards shows `Recall` or `Answer` there), and the layout name (`Lines` / `Falling words`
+  / `Cards`) on the right. The window title reads `Custom · Line n` on Lines,
+  `Custom · Card n` on Cards and `Custom · Words` on Falling words.
 - **No records, splits or achievements:** `recordRun()` and `evaluateAchievements()` are
   no-ops while `state.custom` is set (§16.9). There is no seeded run either: `reset()`
   reseeds the cosmetic RNG, but the stage content is deterministic pasted text.
@@ -1082,6 +1128,8 @@ A custom stage is not a run with modifiers; it is a separate update and scoring 
   game and stops when the Stage Complete dialog opens) and
   **accuracy = keys / (keys + misses)**, where `misses` counts wrong keystrokes
   (`state.mistakes`). A dropped falling word is recycled and is deliberately not a miss.
+  A Cards deck reports recall stats instead (§16.10): it has no keys, no misses and no
+  WPM at all.
 - The pause phase still works: Esc pauses and Enter/Esc resumes; the run clock is frozen
   while paused, exactly as in a normal run.
 
@@ -1092,24 +1140,30 @@ A custom stage is not a run with modifiers; it is a separate update and scoring 
 | Text length | 12,000 characters | after normalisation |
 | Line segments | 400 | Lines layout |
 | Falling-word tokens | 600 | Falling words layout |
-| Token length | 2-16 letters | Falling words layout |
+| Token length | 2-16 letters / 1-16 characters | Falling words layout |
+| Cards | 200 | Cards layout |
+| Card prompt / answer | 120 / 240 characters | Cards layout |
+| Prompts | 400 | Prompts layout |
+| Prompt shown / typed | 80 / 80 characters | Prompts layout |
 | Saved stages | 20 | `wordfall.custom.stages` |
 | Stage name | 40 characters | editor and saved records |
 | Preview | 3.5 s | Memorize |
 
-Normalisation runs before any layout work: CRLF becomes LF, tabs and form feeds become
-spaces, every character outside printable ASCII plus newline becomes a space, runs of
-spaces collapse to one, and the result is sliced to 12,000 characters. This keeps a pasted
-PDF from producing a wall of tabs and non-breaking spaces, and keeps word boundaries around
-typographic punctuation. When Clean on start is on, cleanup (§16.3) runs first and
-normalisation then applies to its output; a saved record and a debug-hook config run
-through the same cleaner, normaliser and 40-character name slice.
+Every layout runs a source pass before any layout work: CRLF becomes LF, tabs and form
+feeds become spaces, control characters become spaces, runs of spaces collapse to one, and
+the result is sliced to 12,000 characters. **No script is stripped.** The typing layouts
+use `customPlainText()`, which keeps every Unicode character, so `你好` survives the
+editor, Save and reload; the pair layouts (Cards, Prompts) use `customCardSource()`, which
+additionally trims and blanks lines so each line is exactly one pair. When Clean on start
+is on, cleanup (§16.3) runs first and the layout's source function then applies to its
+output; a saved record and a debug-hook config run through the same cleaner, source
+function and 40-character name slice.
 
 ### 16.8 Persistence
 
 | Key | Shape | Written when |
 | --- | --- | --- |
-| `wordfall.custom.stages` | `[{id, name, text, layout, memorize, loop, updated}]`, max 20; `text` is the normalised textarea text | Save / Delete |
+| `wordfall.custom.stages` | `[{id, name, text, layout, memorize, loop, updated}]`, max 20; `text` is the layout's source text (Unicode-preserving for every layout) | Save / Delete |
 | `wordfall.custom.last` | `{name, text, layout, memorize, loop, clean}` | every stage start |
 
 - Both are read once at boot. A missing, malformed or wrong-shaped value degrades to an
@@ -1118,11 +1172,14 @@ through the same cleaner, normaliser and 40-character name slice.
   next Save allocates a new id and unshifts a new entry; saving a loaded stage updates it in
   place. The list is capped at 20 on load and on save (the newest entries survive because a
   new stage is unshifted to the front and the tail is truncated).
-- Saved stages store the normalised **textarea** text - not the clean-on-start copy and
-  never a `clean` flag - so cleanup is re-evaluated at every start and defaults to on when
-  a saved stage is loaded. An explicit **Clean text** rewrite is part of the textarea and
-  is therefore saved as-is. `wordfall.custom.last` does remember the last `clean` choice,
-  because it is the last started config.
+- Saved stages store the **textarea** text in the layout's source form - not the
+  clean-on-start copy and never a `clean` flag - so cleanup is re-evaluated at every start
+  and defaults to on when a saved stage is loaded. An explicit **Clean text** rewrite is
+  part of the textarea and is therefore saved as-is. `wordfall.custom.last` does remember
+  the last `clean` choice, because it is the last started config. `layout` is `lines`,
+  `words`, `cards` or `prompts`; an unknown value degrades to `lines`, and a saved
+  `memorize` flag is
+  only honoured on Lines.
 - `wordfall.custom.last` is a convenience, not a save: it is the last *started* config, so
   an unsaved stage still prefills the editor next launch. Starting a stage never rewrites
   the saved-stage list.
@@ -1141,3 +1198,97 @@ guard. Combined with the practice update path, this means a custom stage cannot 
 and cannot set a best score or best wave - even if its token count or clear count would
 otherwise trip an achievement test. The completion dialog is the only reward, and that is
 intentional: practice should not inflate the roguelite ladder.
+
+### 16.10 Cards: reveal and grade
+
+Cards exist because typing measures transcription as much as memory: a long answer costs
+forty keystrokes, a typo is indistinguishable from a forgotten word, and a slow keyboard
+becomes the bottleneck. A card costs one thought and one grade instead.
+
+- **Presentation.** The prompt is drawn centred with a CJK-capable font stack
+  (`Lucida Console`, `Courier New`, `Microsoft YaHei`, `SimHei`), wrapped with the real
+  measured width and shrunk until it fits in two lines. A `RECALL · n/total` label sits
+  above it, a thin bar under it drains as it falls, and the key legend (`SPACE REVEAL`)
+  sits in the top-right where the card cannot reach it.
+- **The fall is the timer.** A card starts at `H × 0.16` and moves to
+  `groundY - 30` over `10 s + floor(answer.length / 14) s`, plus 2 s on a repeat attempt,
+  capped at 22 s. Nothing else on the board is on a clock besides the run clock.
+- **Reveal.** **Space** flips the card where it is and freezes it: the prompt dims, a rule
+  appears, and the answer is drawn below it in the typed colour under an `ANSWER` cue.
+  The legend becomes `1 AGAIN   2 GOOD   3 EASY   ENTER GOOD`. Revealing types nothing -
+  `state.keys` and `state.mistakes` stay untouched.
+- **Grade.** **1** (Again) re-queues the card `cardRepeatGap` (4) cards later, so it comes
+  back within the same session. **2** or **Enter** (Good) and **3** (Easy) retire it.
+  A card retired on its first exposure counts as **first try**. `Easy` and `Good` differ
+  only in the call-out for now; both retire the card.
+- **Timeout.** A card that reaches the line flips itself under a `TIME` popup, keeps its
+  answer up for `cardTimeoutRevealSec` (1.8 s), then auto-grades as **Again**. The player
+  can still grade it manually during that beat.
+- **Completion.** When the queue empties every card has been retired, and the stage
+  completes (or loops, §16.5). The result dialog reports
+  `done/total cards recalled · N first try · N repeats · no typing` and never WPM,
+  keys or accuracy. **Again** replays the same deck from scratch, with the attempt
+  history reset.
+- **Session state only.** `cardSeen`, `cardDone`, `cardFirst`, `cardAgain` and the queue
+  live on `state.custom` and are discarded when the stage ends; no card mastery is
+  persisted yet. That is the next milestone (spaced resurfacing across sessions), and it
+  is deliberately not in this build.
+- **Keys are scoped.** `cardKey()` only runs while a card stage is playing, so Esc still
+  pauses, F2 still restarts, and the roguelite's letter hotkeys never see these keys.
+- **Sharp text.** The playfield is normally drawn on a 0.55× scene canvas and upscaled
+  with smoothing, which is the game's soft-focus look but blurs 13-16px card chrome. The
+  editor's **Sharp text** checkbox (`settings.crisp`, persisted in
+  `wordfall.settings.crisp`, off by default) renders the scene 1:1 while a practice stage
+  is active, so card prompts, answers and the key legend stay legible. The scene returns
+  to 0.55× on **Main Menu** / a normal run; the roguelite never renders sharp. The key
+  legend and the `RECALL` / `ANSWER` label are 16px and 13px bold monospace on a dark
+  plate, sized to survive the soft-focus mode too.
+
+### 16.11 Prompts: show one thing, type another
+
+Prompts exist because the strongest language drills are cross-modal: a Chinese character
+should cue its pinyin, an English meaning should cue the target word, a definition should
+cue the term. Cards cannot do that - a card is self-graded - and Lines can only ask you to
+copy what you see.
+
+- **Authoring.** One pair per line, `shown :: typed` or `shown => typed`, split at the
+  first separator by `customPairSplit()`. The left side is the cue, the right side is what
+  is typed; each side caps at 80 characters and a stage at 400 prompts. Lines without a
+  separator are skipped and counted in the meta line, exactly like Cards.
+- **Play.** The cue is drawn amber, centred above the line, in the measured-width
+  renderer; the typed answer is drawn at the line as green glyphs for the typed prefix and
+  dots for the rest, inside the normal target frame. Typing uses the ordinary rules -
+  lock-on, combo, keys, misses, WPM and accuracy - so the result dialog is the typing one,
+  with `prompts` as the unit.
+- **Hide the cue.** `Memorize` is re-used as the cue's hide switch: on, the cue shows for
+  the 3.5 s preview or until the first correct key and is then replaced by
+  `TYPE FROM MEMORY`; off, the cue stays up for the whole line. This is the requested
+  "show one thing, type another, and optionally make the shown thing disappear".
+- **Unicode.** Both sides keep their script, so the cue can be `你好` and the answer
+  `ni hao` (no IME needed), or the cue can be `hello` and the answer `你好` (IME needed,
+  §16.12).
+
+### 16.12 Non-Latin scripts and IME
+
+Every custom layout now accepts non-Latin text. The typing layouts needed three changes:
+
+- **Source.** `customPlainText()` replaces the old ASCII normaliser: it normalises
+  whitespace and drops control characters but keeps every Unicode character, so a pasted
+  Chinese poem or Japanese vocabulary list is not silently emptied.
+- **Metrics.** A word's `w` is `sum(measureText(glyph))` rather than `charW × length`, and
+  the word carries `offsets[]` / `glyphW[]`. Drawing, the caret underline, shatter shards,
+  key-burst positions and the target frame all use those arrays, so wide glyphs and mixed
+  scripts do not overlap. `glyphMetrics()` keeps a fast `i × charW` path for pure ASCII,
+  which is why the roguelite renders identically. Lines wrap by measured width; Falling
+  words tokenise with `Intl.Segmenter` when the text is not pure ASCII.
+- **Input.** Chrome/WebView2 route IME composition only to a focused text field, so a
+  custom stage focuses a 1×1 invisible `#imeSink` input. `keydown` ignores events while
+  `isComposing` (or keyCode 229 / key `Process`), so pinyin and candidate keys never count
+  as misses; `compositionend` takes the committed string and feeds it through `typeChunk()`
+  / `typeLetter()` one character at a time, which is why lock-on, progress and completion
+  behave exactly like typed Latin. The sink is exempt from the "form fields own their keys"
+  guard, focus is restored after a dialog closes, pause/resume and a pointerdown, and it is
+  blurred on **Main Menu** and when a normal run starts.
+- **Persistence and the rest of the mode** are unchanged by script: a saved stage stores
+  the Unicode source, the result stats are the same typing stats, and the record book stays
+  untouched.

@@ -35,11 +35,25 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 
 <br><br>
 
-<img src="shots/14-custom-dialog.png" alt="The Custom Stage editor: a pasted poem, Lines or Falling words, Memorize, Loop and Clean on start toggles, Clean text and New/Save/Delete buttons, and a saved-stage list" width="31%">
+<img src="shots/14-custom-dialog.png" alt="The Custom Stage editor: a Chinese deck in the textarea, Lines / Falling words / Cards layout pills, Memorize, Loop and Clean on start toggles, Clean text and New/Save/Delete buttons, and a saved-stage list" width="31%">
 &nbsp;&nbsp;&nbsp;
 <img src="shots/15-custom-lines.png" alt="A custom Lines stage mid-type: the typed prefix in green, the rest of the line waiting, framed by the target marker and progress bar" width="31%">
 &nbsp;&nbsp;&nbsp;
 <img src="shots/16-custom-memory.png" alt="Memorize mode: the typed prefix stays visible while the rest of the line is hidden behind dots under a TYPE FROM MEMORY cue" width="31%">
+
+<br><br>
+
+<img src="shots/cards-recall.png" alt="A Chinese Cards stage: the prompt 你好 falling toward the line under a RECALL cue, with a draining timer bar and SPACE REVEAL in the corner" width="31%">
+&nbsp;&nbsp;&nbsp;
+<img src="shots/cards-answer.png" alt="The same card flipped: the answer ni hao — hello in green under an ANSWER cue, with 1 AGAIN / 2 GOOD / 3 EASY in the corner" width="31%">
+
+<br><br>
+
+<img src="shots/unicode-lines.png" alt="A Chinese Lines stage: the poem 床前明月光，疑是地上霜 typed in green up to 床前明, the rest waiting, with the target frame and progress bar" width="31%">
+&nbsp;&nbsp;&nbsp;
+<img src="shots/unicode-prompts.png" alt="A Prompts stage: the cue 你好 in amber above the line while the pinyin answer ni hao is typed below as green glyphs and dots" width="31%">
+&nbsp;&nbsp;&nbsp;
+<img src="shots/unicode-words.png" alt="Falling words with Chinese tokens: 你好 drops toward the line with the target frame, out of a four-word queue" width="31%">
 
 </div>
 
@@ -153,6 +167,12 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 - Keep up to 20 saved stages; **New** starts another, **Delete** removes the loaded one
 - Type it as **Lines**: one display row at a time, spaces and punctuation included
 - Or as **Falling words**: every 2-16 letter word drops in, at a fixed gentle pace
+- Or as **Cards**: one `prompt :: answer` per line, recalled without typing
+- Or as **Prompts**: one `shown :: typed` per line — show 你好, type `ni hao`; the cue can
+  stay up or disappear after a preview (**Memorize**)
+- Every layout takes **any language**. Lines and Falling words now keep non-Latin text and
+  accept IME input (pinyin → 汉字, Japanese, Korean); Cards and Prompts are Unicode all the
+  way down
 
 </td>
 <td width="50%" valign="top">
@@ -162,10 +182,17 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 - **Clean text** strips citation markers like `[1]` and `[b]`, links, URLs and wiki clutter
 - **Clean on start** runs that cleanup automatically on every start
 - **Memorize** previews each line for 3.5 s, then hides the rest behind dots
+- **Cards** recall: a prompt falls, **Space** flips it, **1 / 2 / 3** grades it.
+  **Again** re-queues the card a few cards later; **Good** and **Easy** retire it,
+  so the deck adapts to what you actually know. Nothing is typed.
+- **Sharp text** renders a practice stage at full resolution instead of the soft-focus
+  upscale, so card prompts, answers and the key hints stay readable. It is remembered
+  once you tick it in the Custom Stage editor, and never affects the roguelite.
 - **Loop** runs the same text again and again
 - In a drill the status bar collapses to one **Practice** panel and the strip shows time,
-  line/word progress and the stage name
+  line/word/card progress and the stage name
 - No cards, no lives, no Pressure; finishing shows time, keys, WPM and accuracy
+  (a Cards deck reports recall instead: first-try cards, repeats and no typing)
 - Nothing touches your records or achievements
 
 </td>
@@ -249,6 +276,9 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 | R | draft: reroll the offer (once per run) |
 | S | draft: skip (`+150 × wave` points, +1 Shield next wave, still raises Pressure) |
 | F2 | new run; in a custom stage, restart the same text |
+| Space | Cards: flip the live card to its answer |
+| 1 2 3 | Cards (after the flip): grade Again / Good / Easy |
+| Enter | Cards (after the flip): grade Good |
 | Game menu | Difficulty, Custom Stage…, Splits…, Achievements… and Records… |
 | Custom | **Custom Stage…** on the main screen or **Game** menu; in a drill Esc pauses and F2 restarts the same text |
 
@@ -325,6 +355,8 @@ time, so rebuild after changing the game. `install.ps1` copies the build into
 node tools/smoke.mjs            # Playwright UI, rules, effects and frame-time checks
 node tools/qa-v15.mjs           # main screen, clock, splits, achievements, difficulty, decoy, CPU budget
 node tools/qa-custom.mjs        # custom stages: entry, layouts, memorize, loop, New/multi-stage, text cleanup, isolation
+node tools/qa-cards.mjs         # Cards deck: parser, editor, reveal/grade keys, rescheduling, timeout, CJK save/reload, Sharp text
+node tools/qa-unicode.mjs       # multilingual: Unicode source, CJK lines/words, IME commit, Prompts, New Run restart
 node tools/bot.mjs --seeds 100  # headless WPM bot against the SPEC balance targets
 ```
 
@@ -340,7 +372,7 @@ diagnostics and the balance lab are documented in the
 | :--- | :--- |
 | [SPEC.md](SPEC.md) | The design doc: rules, cards, milestones and tuning targets |
 | [TECHNICAL.md](TECHNICAL.md) | Renderer, presentation, native shell, updater, test harnesses and tuning |
-| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.7.0 |
+| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.8.0 |
 | [BALANCE-LAB.md](BALANCE-LAB.md) | Measured card power, draft-offer distribution and tuning recommendations |
 | [QA-REPORT.md](QA-REPORT.md) · [QA-REPORT-M6.md](QA-REPORT-M6.md) · [QA-REPORT-M7.md](QA-REPORT-M7.md) · [QA-JUICE.md](QA-JUICE.md) | Independent acceptance reviews for each milestone |
 | [QA-REPORT-V15.md](QA-REPORT-V15.md) · [QA-DECOY.md](QA-DECOY.md) | v1.5 verification, and the decoy / "long words don't die" investigation |
@@ -354,5 +386,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.7.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.8.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>

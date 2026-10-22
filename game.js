@@ -115,6 +115,14 @@
     practiceMaxWords: 6,
     nextLineGap: 0.34,        // beat between a cleared line and the next one
     minSegChars: 16,
+    // Cards - reveal-and-grade recall. Nothing is typed: a card costs one
+    // thought, and the grade (not a keystroke match) is the score.
+    maxCards: 200,            // cards in one deck
+    cardMaxPrompt: 120,       // characters of a prompt
+    cardMaxAnswer: 240,       // characters of an answer
+    cardRecallSec: 10,        // fall time before an unanswered card is missed
+    cardRepeatGap: 4,         // an "again" card returns this many cards later
+    cardTimeoutRevealSec: 1.8, // how long a timed-out answer stays up
   };
 
   // ─── Difficulty ───────────────────────────────────────────────────────────
@@ -320,10 +328,46 @@
   const SCENE_SCALE = 0.55;      // lower = heavier blur + faster; raise for clarity
   let ctx = out;                 // active context: scene while drawing, out for the blit
 
+  // Practice-only "Sharp text": render the scene 1:1 instead of at 0.55 and
+  // upscaling it, so card prompts, answers and key hints stay legible. The
+  // roguelite keeps its soft-focus look regardless of the setting.
+  function sharpPractice() {
+    return !!(state.custom && settings.crisp);
+  }
+
   let W = 0;
   let H = 0;
   let charW = 0;
   const drawOrder = [];          // reused scratch list for back-to-front word draw
+
+  // A transform-free 2D context used only for measureText. Custom stages can
+  // contain CJK, whose glyph advance is not the ASCII monospace width, so line
+  // wrapping and per-glyph drawing ask the real font instead of multiplying.
+  const measureCanvas = document.createElement('canvas');
+  const mctx = measureCanvas.getContext('2d');
+  function measureLogicalWidth(text) {
+    mctx.font = WORD_FONT;
+    return mctx.measureText(String(text)).width;
+  }
+
+  // Cumulative x offsets and per-glyph advances for one word/line. Pure ASCII
+  // takes the cheap monospace path, so the roguelite and old stages render
+  // pixel-identically.
+  function glyphMetrics(text) {
+    const n = text.length;
+    const offsets = new Array(n);
+    const widths = new Array(n);
+    const ascii = /^[\x20-\x7e]*$/.test(text);
+    let x = 0;
+    if (!ascii) mctx.font = WORD_FONT;
+    for (let i = 0; i < n; i++) {
+      offsets[i] = x;
+      const advance = ascii ? charW : (mctx.measureText(text[i]).width || charW);
+      widths[i] = advance;
+      x += advance;
+    }
+    return { offsets, widths, width: x };
+  }
 
   // Slow, dim colour drifting behind the words. These are a handful of huge,
   // low-alpha discs - not warped shapes - and the low-resolution upscale turns
@@ -354,8 +398,9 @@
     out.imageSmoothingEnabled = true;
     out.imageSmoothingQuality = 'low';
 
-    scene.width = Math.max(120, Math.round(viewW * SCENE_SCALE));
-    scene.height = Math.max(80, Math.round(viewH * SCENE_SCALE));
+    const sceneScale = sharpPractice() ? 1 : SCENE_SCALE;
+    scene.width = Math.max(120, Math.round(viewW * sceneScale));
+    scene.height = Math.max(80, Math.round(viewH * sceneScale));
     sctx.setTransform(scene.width / W, 0, 0, scene.height / H, 0, 0);
 
     ctx = sctx;
@@ -368,7 +413,8 @@
 
     // A practice line is positioned from W, so re-centre it when the window
     // changes mid-stage (the segment itself stays the same length).
-    if (state.custom && state.custom.layout === 'lines' && state.custom.liveLine) {
+    if (state.custom && (state.custom.layout === 'lines' || state.custom.layout === 'prompts') &&
+        state.custom.liveLine) {
       const line = state.custom.liveLine;
       line.x = Math.max(CFG.pad, Math.min((W - line.w) / 2, W - CFG.pad - line.w));
       line.y = customLineY();
@@ -514,7 +560,7 @@
     fastestDawnSec: 0,
   };
   const records = Object.assign({}, RECORD_DEFAULTS);
-  const settings = { muted: false, fx: 'full', difficulty: 'standard' };
+  const settings = { muted: false, fx: 'full', difficulty: 'standard', crisp: false };
 
   // Achievements and wave-split PBs live in their own keys so the long-standing
   // records blob keeps its shape (and its migrations) intact.
@@ -550,6 +596,9 @@
         if (parsed && typeof parsed.muted === 'boolean') settings.muted = parsed.muted;
         if (parsed && (parsed.fx === 'full' || parsed.fx === 'light')) settings.fx = parsed.fx;
         if (parsed && DIFFICULTIES[parsed.difficulty]) settings.difficulty = parsed.difficulty;
+        // Practice-only sharp rendering: the soft-focus upscale makes small
+        // card text hard to read, so the player can turn it off for drills.
+        if (parsed && typeof parsed.crisp === 'boolean') settings.crisp = parsed.crisp;
       }
       // Achievements: only ids that still exist are kept, and only a positive
       // timestamp counts as unlocked.
@@ -589,6 +638,7 @@
         muted: !!settings.muted,
         fx: settings.fx,
         difficulty: settings.difficulty,
+        crisp: !!settings.crisp,
       }));
     } catch (e) { /* ignore */ }
   }
@@ -1109,16 +1159,19 @@
   }
 
   function spawnWord(text, opts = {}) {
-    // Custom practice lines keep their case, spaces and punctuation; the
+    // Custom practice lines keep their case, spaces, punctuation and script; the
     // roguelite pool is lowercase single words only, exactly as before.
     const raw = String(text == null ? '' : text);
     text = state.custom ? raw.replace(/\s+/g, ' ').trim() : raw.toLowerCase();
     if (state.custom) {
-      if (!/^[\x20-\x7e]{1,160}$/.test(text)) return null;
+      // Printable text in any script, one line, capped so a pasted paragraph
+      // cannot become a single target.
+      if (!text || text.length > 160 || /[\u0000-\u001f\u007f]/.test(text)) return null;
     } else if (!/^[a-z]{1,20}$/.test(text)) {
       return null;
     }
-    const w = charW * text.length;
+    const metrics = glyphMetrics(text);
+    const w = metrics.width;
     const maxX = Math.max(CFG.pad, W - CFG.pad - w);
     const x = opts.x != null ? opts.x : CFG.pad + rng() * Math.max(0, maxX - CFG.pad);
     const word = {
@@ -1127,6 +1180,8 @@
       x,
       y: opts.y != null ? opts.y : -CFG.charH - 12,
       w,
+      offsets: metrics.offsets,
+      glyphW: metrics.widths,
       progress: 0,
       fake: !!opts.fake,
       flare: !!opts.flare,
@@ -1416,7 +1471,9 @@
     const glyphs = word.text.split('');
     const max = Math.min(glyphs.length, fxCount(14 * Math.min(power, 1.6)));
     for (let i = 0; i < max; i++) {
-      const gx = baseX + i * charW + charW / 2;
+      const ox = word.offsets ? word.offsets[i] : i * charW;
+      const gw = word.glyphW ? word.glyphW[i] : charW;
+      const gx = baseX + ox + gw / 2;
       const ang = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
       const sp = (70 + Math.random() * 200) * power;
       state.shards.push({
@@ -1480,7 +1537,8 @@
     // Rapid typing feeds its own meter on top of the combo, so a clean burst of
     // letters escalates the visual noise key by key instead of at word level.
     state.keyStreak = Math.min(22, state.keyStreak + 1);
-    const px = clamp(word.x + pos * charW + charW / 2, 0, W);
+    const px = clamp(word.x + (word.offsets ? word.offsets[pos] : pos * charW) +
+      ((word.glyphW ? word.glyphW[pos] : charW) / 2), 0, W);
     const py = word.y + CFG.charH / 2;
     const hype = clamp(state.keyStreak / 13, 0, 1) + (urgent ? 0.3 : 0) +
       clamp(state.combo / 24, 0, 0.4);
@@ -1888,10 +1946,10 @@
     if (state.phase !== 'playing' || state.waveClearT > 0) return;
     const custom = state.custom;
     ch = String(ch == null ? '' : ch).toLowerCase();
-    // Practice lines accept the whole printable row (spaces, punctuation and
-    // capitals); every other mode stays letters-only.
-    if (custom && custom.layout === 'lines') {
-      if (!/^[\x20-\x7e]$/.test(ch)) return;
+    // Practice accepts any printable single character in any script (a line can
+    // be Chinese, Japanese, Korean); the roguelite stays letters-only.
+    if (custom) {
+      if (!ch || ch.length !== 1 && ch.length !== 2 || /[\u0000-\u001f\u007f]/.test(ch)) return;
     } else if (!/^[a-z]$/.test(ch)) {
       return;
     }
@@ -1921,7 +1979,7 @@
       state.keys += 1;
       // Memorize: the first committed key hides the rest of the line, so the
       // player is reading the words back from memory from here on.
-      if (custom && custom.layout === 'lines' && custom.memorize && !custom.hidden) customHideLine();
+      if (custom && (custom.layout === 'lines' || custom.layout === 'prompts') && custom.memorize && !custom.hidden) customHideLine();
       word.typedAt[word.progress - 1] = state.t;
       if (word.progress >= word.text.length) {
         clearWord(word, false);
@@ -2068,20 +2126,138 @@
   let customLast = null;          // last started config, used to prefill the dialog
   let customEditingId = null;     // id of the saved stage currently loaded in the dialog
 
-  // Keep only printable ASCII plus newlines; collapse runs so a pasted PDF
-  // does not turn into a wall of tabs and non-breaking spaces.
-  function customNormaliseText(raw) {
+  // The typing layouts (Lines / Falling words) are no longer ASCII-only: a
+  // Chinese poem or a Japanese vocab list has to survive the editor, so they
+  // keep their script and only collapse whitespace. IME input and per-glyph
+  // widths are handled further down.
+  function customPlainText(raw) {
     let text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n');
     text = text.replace(/[\t\f\v]/g, ' ');
-    // Anything outside printable ASCII becomes a space rather than vanishing,
-    // so "word—word" and curly quotes keep their word boundaries.
-    text = text.replace(/[^\n\x20-\x7e]/g, ' ');
+    // Control characters are not typeable; keep newlines, drop the rest.
+    text = text.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ');
     text = text.replace(/ {2,}/g, ' ');
     return text.slice(0, CUSTOM.maxTextChars);
   }
 
-  function customRawLines(text) {
-    return customNormaliseText(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  function customPlainLines(text) {
+    return customPlainText(text).split('\n').map((line) => line.trim()).filter(Boolean);
+  }
+
+  // ─── Cards ────────────────────────────────────────────────────────────────
+  // A card is `prompt :: answer`, one per line. Cards were the first layout to
+  // keep Unicode ("你好 :: ni hao"); the typing layouts use customPlainText now
+  // too, so a deck is not the only multilingual option.
+  function customLayoutId(value) {
+    if (value === 'words') return 'words';
+    if (value === 'cards') return 'cards';
+    if (value === 'prompts') return 'prompts';
+    return 'lines';
+  }
+
+  function customCardSource(raw) {
+    const text = String(raw == null ? '' : raw).replace(/\r\n?/g, '\n').replace(/[\f\v]/g, ' ');
+    const lines = text.split('\n')
+      .map((line) => line.replace(/[ \t]+/g, ' ').trim())
+      .filter(Boolean);
+    return lines.join('\n').slice(0, CUSTOM.maxTextChars);
+  }
+
+  // Prompts are the typed counterpart of Cards: `shown :: typed` per line. The
+  // board shows the left side and the player types the right side, so a Chinese
+  // character can cue its pinyin (or an English meaning can cue the Chinese,
+  // with an IME). The shown side can be hidden after the preview (Memorize).
+  const PROMPT_SHOWN_MAX = 80;
+  const PROMPT_TYPED_MAX = 80;
+
+  function customPromptPairs(text) {
+    const source = customCardSource(text);
+    if (!source) return [];
+    const out = [];
+    for (const line of source.split('\n')) {
+      const pair = customPairSplit(line);
+      if (!pair) continue;
+      out.push({
+        shown: pair.left.slice(0, PROMPT_SHOWN_MAX),
+        typed: pair.right.slice(0, PROMPT_TYPED_MAX),
+      });
+      if (out.length >= CUSTOM.maxLines) break;
+    }
+    return out;
+  }
+
+  function customPromptCounts(text) {
+    const source = customCardSource(text);
+    if (!source) return { prompts: 0, skipped: 0, chars: 0 };
+    let prompts = 0;
+    let skipped = 0;
+    for (const line of source.split('\n')) {
+      if (customPairSplit(line)) prompts += 1;
+      else skipped += 1;
+    }
+    return {
+      prompts: Math.min(prompts, CUSTOM.maxLines),
+      skipped,
+      chars: source.replace(/\s+/g, ' ').trim().length,
+    };
+  }
+
+  // The first `::` or `=>` splits a two-part line. The left side is allowed to
+  // contain the other separator, so a definition can say "a => b" intact.
+  function customPairSplit(line) {
+    const match = /^(.*?)\s*(?:::|=>)\s*(.*)$/.exec(String(line == null ? '' : line).trim());
+    if (!match) return null;
+    const left = match[1].trim();
+    const right = match[2].trim();
+    if (!left || !right) return null;
+    return { left, right };
+  }
+
+  function customCardSplit(line) {
+    const pair = customPairSplit(line);
+    if (!pair) return null;
+    return {
+      prompt: pair.left.slice(0, CUSTOM.cardMaxPrompt),
+      answer: pair.right.slice(0, CUSTOM.cardMaxAnswer),
+    };
+  }
+
+  function customCards(text) {
+    const source = customCardSource(text);
+    if (!source) return [];
+    const out = [];
+    for (const line of source.split('\n')) {
+      const card = customCardSplit(line);
+      if (!card) continue;
+      out.push(card);
+      if (out.length >= CUSTOM.maxCards) break;
+    }
+    return out;
+  }
+
+  function customCardCounts(text) {
+    const source = customCardSource(text);
+    if (!source) return { cards: 0, skipped: 0, chars: 0 };
+    const lines = source.split('\n');
+    let cards = 0;
+    let skipped = 0;
+    for (const line of lines) {
+      if (customCardSplit(line)) cards += 1;
+      else skipped += 1;
+    }
+    return {
+      cards: Math.min(cards, CUSTOM.maxCards),
+      skipped,
+      chars: source.replace(/\s+/g, ' ').trim().length,
+    };
+  }
+
+  // One helper for "the text this layout will actually play": cards and prompts
+  // are pair-per-line sources, the typing layouts keep their script as-is.
+  function customLayoutText(raw, layout) {
+    const id = customLayoutId(layout);
+    return id === 'cards' || id === 'prompts'
+      ? customCardSource(raw)
+      : customPlainText(raw);
   }
 
   // ─── Smart text cleanup ───────────────────────────────────────────────────
@@ -2194,51 +2370,101 @@
 
   // One segment is one target: a single row of monospace glyphs typed in full,
   // spaces and punctuation included. Long pasted lines wrap at word boundaries.
+  // Lines are wrapped by the measured pixel width, not by a character count:
+  // a CJK glyph is not one ASCII monospace cell, and a Chinese sentence has no
+  // spaces to break at, so wrap falls back to a per-character split.
   function customSegments(text) {
-    const maxChars = Math.max(
-      CUSTOM.minSegChars,
-      Math.floor((Math.max(320, W) - CFG.pad * 2) / Math.max(8, charW))
-    );
+    const rowW = Math.max(320, W) - CFG.pad * 2;
+    const maxW = Math.max(CUSTOM.minSegChars * Math.max(8, charW), rowW);
     const out = [];
-    for (const line of customRawLines(text)) {
-      let current = '';
-      for (let word of line.split(/\s+/).filter(Boolean)) {
-        while (word.length > maxChars) {
-          if (current) { out.push(current); current = ''; }
-          out.push(word.slice(0, maxChars));
-          word = word.slice(maxChars);
-          if (out.length >= CUSTOM.maxLines) break;
+    for (const line of customPlainLines(text)) {
+      const chars = Array.from(line);
+      const widths = chars.map((ch) => measureLogicalWidth(ch));
+      let segStart = 0;
+      let segW = 0;
+      let lastSpace = -1;
+      for (let i = 0; i < chars.length; i++) {
+        segW += widths[i];
+        if (chars[i] === ' ') lastSpace = i;
+        if (segW <= maxW || i === segStart) continue;
+        // Break the segment before char i, at the last space when there is one;
+        // a script with no spaces (Chinese, Japanese) breaks per character.
+        const cut = lastSpace > segStart ? lastSpace : i;
+        const seg = chars.slice(segStart, cut).join('').trimEnd();
+        if (seg) out.push(seg);
+        if (out.length >= CUSTOM.maxLines) return out.slice(0, CUSTOM.maxLines);
+        segStart = cut;
+        if (chars[segStart] === ' ') segStart += 1;
+        segW = 0;
+        lastSpace = -1;
+        for (let j = segStart; j <= i; j++) {
+          segW += widths[j];
+          if (chars[j] === ' ') lastSpace = j;
         }
-        if (out.length >= CUSTOM.maxLines) break;
-        if (!word) continue;
-        if (!current) current = word;
-        else if (current.length + 1 + word.length <= maxChars) current += ' ' + word;
-        else { out.push(current); current = word; }
-        if (out.length >= CUSTOM.maxLines) break;
       }
+      const tail = chars.slice(segStart).join('').trim();
+      if (tail) out.push(tail);
       if (out.length >= CUSTOM.maxLines) break;
-      if (current) out.push(current);
     }
     return out.slice(0, CUSTOM.maxLines);
   }
 
-  // Falling words: letters only, in reading order. Two-letter floor keeps
-  // punctuation fragments ("don't" -> "don") out of the playfield.
+  // Falling words: reading-order tokens. Pure-ASCII text keeps the historical
+  // letters-only tokenizer; anything with another script goes through
+  // Intl.Segmenter so "你好世界" becomes real words instead of one 4-character
+  // token (and Japanese/Korean get the same treatment).
   function customTokens(text) {
-    const raw = customNormaliseText(text).toLowerCase().match(/[a-z]+/g) || [];
+    const source = customPlainText(text);
     const out = [];
-    for (const token of raw) {
-      if (token.length < 2 || token.length > CUSTOM.maxTokenLen) continue;
+    const push = (token) => {
+      if (!token) return false;
       out.push(token);
-      if (out.length >= CUSTOM.maxTokens) break;
+      return out.length >= CUSTOM.maxTokens;
+    };
+    if (/^[\x20-\x7e\n]*$/.test(source)) {
+      const raw = source.toLowerCase().match(/[a-z]+/g) || [];
+      for (const token of raw) {
+        if (token.length < 2 || token.length > CUSTOM.maxTokenLen) continue;
+        if (push(token)) break;
+      }
+      return out;
+    }
+    let parts = null;
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+      try {
+        parts = [];
+        const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+        for (const part of segmenter.segment(source)) {
+          if (part.isWordLike) parts.push(part.segment);
+        }
+      } catch (e) {
+        parts = null;
+      }
+    }
+    if (!parts) {
+      parts = source.match(/[\p{L}\p{M}]+/gu) || [];
+    }
+    for (const part of parts) {
+      // Keep letters and combining marks; drops punctuation and digits, which
+      // matches the ASCII tokenizer's letters-only rule.
+      const letters = String(part).replace(/[^\p{L}\p{M}]/gu, '');
+      if (!letters) continue;
+      let token = letters;
+      if (/^[a-zA-Z]+$/.test(token)) {
+        token = token.toLowerCase();
+        if (token.length < 2 || token.length > CUSTOM.maxTokenLen) continue;  // "a", "I"
+      } else if (token.length > CUSTOM.maxTokenLen) {
+        continue;
+      }
+      if (push(token)) break;
     }
     return out;
   }
 
   function customCounts(text) {
-    const normal = customNormaliseText(text);
-    const lines = customRawLines(text).length;
-    const words = normal.split(/\s+/).filter(Boolean).length;
+    const normal = customPlainText(text);
+    const lines = customPlainLines(text).length;
+    const words = normal.trim() ? normal.trim().split(/\s+/).length : 0;
     const tokens = customTokens(text).length;
     const chars = normal.replace(/\s+/g, ' ').trim().length;
     return { lines, words, tokens, chars };
@@ -2246,14 +2472,15 @@
 
   function customStageFromRecord(item) {
     if (!item || typeof item !== 'object') return null;
-    const text = customNormaliseText(item.text);
+    const layout = customLayoutId(item.layout);
+    const text = customLayoutText(item.text, layout);
     if (!text.trim()) return null;
     return {
       id: String(item.id || ('stage-' + Math.random().toString(36).slice(2, 10))),
       name: (String(item.name || 'Untitled stage').trim() || 'Untitled stage').slice(0, 40),
       text,
-      layout: item.layout === 'words' ? 'words' : 'lines',
-      memorize: !!item.memorize,
+      layout,
+      memorize: (layout === 'lines' || layout === 'prompts') && !!item.memorize,
       loop: !!item.loop,
       updated: Number(item.updated) || Date.now(),
     };
@@ -2274,12 +2501,15 @@
       }
       const lastRaw = localStorage.getItem(CUSTOM_LAST_KEY);
       const last = lastRaw ? JSON.parse(lastRaw) : null;
-      if (last && typeof last.text === 'string' && customNormaliseText(last.text).trim()) {
+      const lastLayout = last ? customLayoutId(last.layout) : 'lines';
+      const lastText = last && typeof last.text === 'string'
+        ? customLayoutText(last.text, lastLayout) : '';
+      if (lastText.trim()) {
         customLast = {
           name: String(last.name || 'Untitled stage').slice(0, 40),
-          text: customNormaliseText(last.text),
-          layout: last.layout === 'words' ? 'words' : 'lines',
-          memorize: !!last.memorize,
+          text: lastText,
+          layout: lastLayout,
+          memorize: (lastLayout === 'lines' || lastLayout === 'prompts') && !!last.memorize,
           loop: !!last.loop,
           clean: last.clean !== false,
         };
@@ -2307,9 +2537,19 @@
   }
 
   // A blank stage name falls back to the text's opening words, so a list of
-  // saved stages is still readable when the player never names them.
-  function customDefaultName(text) {
-    const words = customNormaliseText(text).replace(/\s+/g, ' ').trim().split(' ').slice(0, 5).join(' ');
+  // saved stages is still readable when the player never names them. A deck
+  // uses its first prompt: the first `::` line is the title, not the whole deck.
+  function customDefaultName(text, layout) {
+    const id = customLayoutId(layout);
+    let source;
+    if (id === 'cards' || id === 'prompts') {
+      const first = customCardSource(text).split('\n')[0] || '';
+      const pair = customPairSplit(first);
+      source = pair ? pair.left : '';
+    } else {
+      source = customPlainText(text);
+    }
+    const words = source.replace(/\s+/g, ' ').trim().split(' ').slice(0, 5).join(' ');
     return (words || 'Untitled stage').slice(0, 40);
   }
 
@@ -2317,7 +2557,7 @@
     // Raw text: startCustomStage cleans and normalises it, so a direct debug
     // start and the editor take exactly the same path.
     const text = String(config && config.text != null ? config.text : '');
-    const layout = config && config.layout === 'words' ? 'words' : 'lines';
+    const layout = customLayoutId(config && config.layout);
     // No fallback here: the name is derived from the *cleaned* text in
     // startCustomStage, so markup or citation junk never becomes the title.
     const name = String((config && config.name) || '').trim().slice(0, 40);
@@ -2327,7 +2567,7 @@
       text,
       clean: !(config && config.clean === false),
       layout,
-      memorize: layout === 'lines' && !!(config && config.memorize),
+      memorize: (layout === 'lines' || layout === 'prompts') && !!(config && config.memorize),
       loop: !!(config && config.loop),
     };
   }
@@ -2343,13 +2583,17 @@
     // One cleaner, one entry point: the editor, F2/Again and the debug hook all
     // get the same treatment.
     const cleaned = cfg.clean ? customCleanText(cfg.text) : null;
-    const text = customNormaliseText(cleaned ? cleaned.text : cfg.text);
+    const sourceText = cleaned ? cleaned.text : cfg.text;
+    const text = customLayoutText(sourceText, cfg.layout);
     cfg.text = text;
     if (!text.trim()) return false;
     // The auto-name ignores citation junk even when cleanup is switched off.
     const nameSource = cleaned ? cleaned.text : customCleanText(cfg.text).text;
-    if (!cfg.name || cfg.name === 'Untitled stage') cfg.name = customDefaultName(nameSource);
-    const prepared = cfg.layout === 'lines' ? customSegments(text) : customTokens(text);
+    if (!cfg.name || cfg.name === 'Untitled stage') cfg.name = customDefaultName(nameSource, cfg.layout);
+    const prepared = cfg.layout === 'lines'
+      ? customSegments(text)
+      : cfg.layout === 'words' ? customTokens(text)
+        : cfg.layout === 'prompts' ? customPromptPairs(text) : customCards(text);
     if (!prepared.length) return false;
 
     closeMenus();
@@ -2368,8 +2612,12 @@
       memorize: cfg.memorize,
       loop: cfg.loop,
       cleaned: cleaned ? cleaned.stats : null,
-      lines: cfg.layout === 'lines' ? prepared : [],
+      lines: cfg.layout === 'prompts'
+        ? prepared.map((pair) => pair.typed)
+        : cfg.layout === 'lines' ? prepared : [],
       tokens: cfg.layout === 'words' ? prepared : [],
+      cards: cfg.layout === 'cards' ? prepared : [],
+      prompts: cfg.layout === 'prompts' ? prepared : [],
       queue: [],
       remaining: 0,
       done: 0,
@@ -2382,13 +2630,28 @@
       preview: 0,
       hidden: false,
       finished: false,
+      // Cards: the session queue, per-card attempt counts, the live card and
+      // the memory stats the result screen reports instead of WPM.
+      cardQueue: [],
+      cardSeen: {},
+      cardLive: null,
+      cardDone: 0,
+      cardFirst: 0,
+      cardAgain: 0,
+      cardReviews: 0,
     };
     state.custom = custom;
-    if (custom.layout === 'lines') {
+    // The scene resolution depends on whether this practice stage runs sharp,
+    // so pick it before the first frame of the stage.
+    resize();
+    if (custom.layout === 'lines' || custom.layout === 'prompts') {
       spawnCustomLine(0);
-    } else {
+    } else if (custom.layout === 'words') {
       custom.queue = custom.tokens.slice();
       custom.remaining = custom.tokens.length;
+    } else {
+      custom.cardQueue = custom.cards.map((_, index) => index);
+      spawnNextCard(custom);
     }
     if (!state.simulating && cleaned && cleaned.removed > 0) {
       popup(W / 2, 118, 'TEXT CLEANED \u00b7 ' + cleaned.removed + ' ITEMS REMOVED', COL.accent, {
@@ -2396,20 +2659,25 @@
       });
     }
     syncUi(true);
+    focusImeSink();
     return true;
   }
 
   function spawnCustomLine(index) {
     const custom = state.custom;
-    if (!custom || custom.layout !== 'lines') return null;
+    if (!custom || (custom.layout !== 'lines' && custom.layout !== 'prompts')) return null;
     const text = custom.lines[index];
     if (text == null) return null;
-    const width = charW * text.length;
-    const word = spawnWord(text, { x: Math.max(CFG.pad, (W - width) / 2), y: customLineY() });
+    const word = spawnWord(text, { x: CFG.pad, y: customLineY() });
     if (!word) return null;
     word.custom = true;
     word.static = true;
     word.line = true;
+    if (custom.layout === 'prompts') {
+      // The word is the typed answer; the shown side is drawn by its own pass.
+      word.promptOnly = true;
+      word.prompt = custom.prompts[index] ? custom.prompts[index].shown : '';
+    }
     word.x = Math.max(CFG.pad, Math.min((W - word.w) / 2, W - CFG.pad - word.w));
     word.y = customLineY();
     word.progress = 0;
@@ -2440,6 +2708,149 @@
       custom.hidden && word === custom.liveLine);
   }
 
+  // ─── Cards: reveal and grade ──────────────────────────────────────────────
+  // A card falls from the top of the board to the line. The player recalls the
+  // answer, presses Space to flip the card, then grades with 1/2/3. "Again"
+  // re-queues the card a few cards later; Good and Easy retire it. Nothing is
+  // typed, so a slow keyboard is never the bottleneck - and a paraphrase is a
+  // valid answer, because the player, not a string compare, is the judge.
+  function cardStartY() {
+    return Math.round(H * 0.16);
+  }
+
+  function cardFloorY() {
+    return Math.round(state.groundY - 30);
+  }
+
+  function spawnNextCard(custom) {
+    if (!custom) return null;
+    if (!custom.cardQueue.length) { custom.cardLive = null; return null; }
+    const index = custom.cardQueue.shift();
+    const card = custom.cards[index];
+    if (!card) return spawnNextCard(custom);
+    const seen = custom.cardSeen[index] || 0;
+    custom.cardSeen[index] = seen + 1;
+    const attempts = seen + 1;
+    // Longer definitions get a little more thinking time; one number for every
+    // card would either rush a paragraph or pad a two-word translation.
+    const dur = clamp(
+      CUSTOM.cardRecallSec + Math.floor(card.answer.length / 14) + (attempts > 1 ? 2 : 0),
+      CUSTOM.cardRecallSec,
+      22
+    );
+    custom.cardLive = {
+      index,
+      card,
+      attempts,
+      y: cardStartY(),
+      dur,
+      t: 0,
+      revealed: false,
+      timedOut: false,
+      timeoutT: 0,
+    };
+    return custom.cardLive;
+  }
+
+  function revealCard() {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'cards') return false;
+    const live = custom.cardLive;
+    if (!live || live.revealed) return false;
+    live.revealed = true;
+    live.timedOut = false;
+    if (!state.simulating) {
+      state.keyFlash = Math.max(state.keyFlash, 0.1);
+      playKey(1, 4);
+    }
+    return true;
+  }
+
+  function cardTimeoutReveal(live) {
+    live.revealed = true;
+    live.timedOut = true;
+    live.timeoutT = CUSTOM.cardTimeoutRevealSec;
+    if (!state.simulating) {
+      popup(W / 2, cardFloorY() - 46, 'TIME', COL.danger, { size: 16, vy: -20, life: 0.9 });
+      playMistake();
+    }
+  }
+
+  function gradeCard(grade) {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'cards') return false;
+    const live = custom.cardLive;
+    if (!live || !live.revealed) return false;
+    custom.cardLive = null;
+    custom.cardReviews += 1;
+    if (grade === 'again') {
+      custom.cardAgain += 1;
+      const at = Math.min(custom.cardQueue.length, CUSTOM.cardRepeatGap);
+      custom.cardQueue.splice(at, 0, live.index);
+      if (!state.simulating) {
+        popup(W / 2, cardFloorY() - 34, 'AGAIN', COL.danger, { size: 18, vy: -26, life: 0.9 });
+        ring(W / 2, state.groundY, COL.danger, 150, 0.3, 2);
+        playMistake();
+      }
+    } else {
+      custom.cardDone += 1;
+      if (live.attempts <= 1) custom.cardFirst += 1;
+      if (!state.simulating) {
+        popup(W / 2, cardFloorY() - 40, grade === 'easy' ? 'EASY' : 'GOOD', COL.typed, {
+          size: 18, vy: -26, life: 0.9,
+        });
+        ring(W / 2, state.groundY, COL.typed, 160, 0.32, 2);
+        streakBurst(W / 2, state.groundY - 40, 9, { radial: true, speed: 240, color: COL.typed });
+        playClear(custom.cardDone, 0, false, 4);
+      }
+    }
+    if (!custom.cardQueue.length) {
+      if (custom.loop) customStartPass(custom);
+      else customComplete();
+    } else {
+      spawnNextCard(custom);
+    }
+    return true;
+  }
+
+  // The only keys cards answer to: Space flips, 1/2/3 grade, Enter is a quick
+  // Good. Anything else falls through, so Esc still pauses and F2 still restarts.
+  function cardKey(key) {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'cards' || !custom.cardLive) return false;
+    const live = custom.cardLive;
+    if (!live.revealed) {
+      if (key === ' ' || key === 'Spacebar') return revealCard();
+      return false;
+    }
+    if (key === '1') return gradeCard('again');
+    if (key === '2' || key === 'Enter') return gradeCard('good');
+    if (key === '3') return gradeCard('easy');
+    return false;
+  }
+
+  function updateCards(custom, dt) {
+    const live = custom.cardLive;
+    if (!live) {
+      spawnNextCard(custom);
+      if (!custom.cardLive) customComplete();
+      return;
+    }
+    if (live.revealed) {
+      // A timed-out card shows the answer for a beat, then takes itself as an
+      // "again"; the player can still grade it first if they were close.
+      if (live.timedOut && live.timeoutT > 0) {
+        live.timeoutT -= dt;
+        if (live.timeoutT <= 0) gradeCard('again');
+      }
+      return;
+    }
+    live.t += dt;
+    const span = Math.max(1, cardFloorY() - cardStartY());
+    live.y = cardStartY() + Math.min(1, live.t / live.dur) * span;
+    if (live.t >= live.dur) cardTimeoutReveal(live);
+  }
+
   function customHideLine() {
     const custom = state.custom;
     if (!custom || custom.hidden) return;
@@ -2453,7 +2864,7 @@
   function updateCustom(dt) {
     const custom = state.custom;
     if (!custom || custom.finished) return;
-    if (custom.layout === 'lines') {
+    if (custom.layout === 'lines' || custom.layout === 'prompts') {
       if (custom.nextLineT > 0) {
         custom.nextLineT -= dt;
         if (custom.nextLineT <= 0) spawnCustomLine(custom.lineIndex + 1);
@@ -2461,6 +2872,12 @@
         custom.preview -= dt;
         if (custom.preview <= 0) customHideLine();
       }
+      state.dangerLevel = 0;
+      state.dangerT = 0;
+      return;
+    }
+    if (custom.layout === 'cards') {
+      updateCards(custom, dt);
       state.dangerLevel = 0;
       state.dangerT = 0;
       return;
@@ -2501,7 +2918,7 @@
     const custom = state.custom;
     if (!custom || custom.finished) return;
     custom.done += 1;
-    if (custom.layout === 'lines') {
+    if (custom.layout === 'lines' || custom.layout === 'prompts') {
       custom.liveLine = null;
       if (custom.lineIndex + 1 >= custom.lines.length) customComplete();
       else custom.nextLineT = CUSTOM.nextLineGap;
@@ -2516,15 +2933,24 @@
     custom.done = 0;
     // -1 means "the next spawn is line 0 of the new pass" (updateCustom adds
     // one when it advances), so a looping one-line stage restarts correctly.
-    custom.lineIndex = custom.layout === 'lines' ? -1 : 0;
+    custom.lineIndex = (custom.layout === 'lines' || custom.layout === 'prompts') ? -1 : 0;
     custom.liveLine = null;
     custom.hidden = false;
     custom.preview = 0;
     custom.nextLineT = 0;
     state.words.length = 0;
     state.lockWord = null;
-    if (custom.layout === 'lines') {
+    if (custom.layout === 'lines' || custom.layout === 'prompts') {
       custom.nextLineT = 0.6;
+    } else if (custom.layout === 'cards') {
+      custom.cardQueue = custom.cards.map((_, index) => index);
+      custom.cardSeen = {};
+      custom.cardLive = null;
+      custom.cardDone = 0;
+      custom.cardFirst = 0;
+      custom.cardAgain = 0;
+      custom.cardReviews = 0;
+      spawnNextCard(custom);
     } else {
       custom.queue = custom.tokens.slice();
       custom.remaining = custom.tokens.length;
@@ -2792,7 +3218,15 @@
   }
 
   // ─── Playfield rendering - soft-focus ─────────────────────────────────────
-  const WORD_FONT = 'bold 24px "Lucida Console", "Courier New", monospace';
+  const WORD_FONT = 'bold 24px "Lucida Console", "Courier New", "Microsoft YaHei", "SimHei", monospace';
+  // Cards carry arbitrary text, including CJK: the CJK faces at the end of the
+  // stack are what keep a Chinese deck legible, and measureText gives the real
+  // width so nothing is positioned with the ASCII glyph advance.
+  const CARD_FAMILY = '"Lucida Console", "Courier New", "Microsoft YaHei", "SimHei", monospace';
+  // Card chrome is deliberately larger than the 9px PIXEL_FONT labels: the hint
+  // has to survive the soft-focus upscale when Sharp text is off.
+  const CARD_LABEL_FONT = 'bold 13px "Lucida Console", "Courier New", monospace';
+  const CARD_LEGEND_FONT = 'bold 16px "Lucida Console", "Courier New", monospace';
   const PIXEL_FONT = '9px "Microsoft Sans Serif", Tahoma, sans-serif';
   const PARTICLE_COLORS = ['#ff2bd1', '#25f4ff', '#b6ff1a', '#ffae00', '#ffffff', '#8a5bff'];
 
@@ -2821,6 +3255,8 @@
     drawEchoes();
     drawDangerLine();
     drawWords();
+    drawCustomPrompts();
+    drawCustomCards();
     drawShards();
     drawParticles();
     drawStreaks();
@@ -3069,6 +3505,8 @@
     for (const w of state.words) drawOrder.push(w);
     drawOrder.sort((a, b) => a.y - b.y);
     for (const w of drawOrder) {
+      // Prompts draw their own pass: the board shows the cue, not the answer.
+      if (w.promptOnly) continue;
       const urgent = w.y + CFG.charH > state.groundY - 130;
       const inSet = set.indexOf(w) >= 0;
       const isTarget = w === target;
@@ -3142,7 +3580,8 @@
         const pos = rev ? w.text.length - 1 - i : i;
         const typed = pos < w.progress;
         const hidden = tunnelN > 0 && !typed && pos >= w.progress + tunnelN;
-        const px = x + i * charW;
+        const px = x + (w.offsets ? w.offsets[i] : i * charW);
+        const gw = w.glyphW ? w.glyphW[i] : charW;
         if (hidden) {
           ctx.fillStyle = COL.hidden;
           ctx.fillText('\u00b7', px, w.y);
@@ -3167,19 +3606,19 @@
           const scale = 1 + (light ? 0.5 : 2.1) * (1 - k);
           const glyph = w.text[i];
           ctx.save();
-          ctx.translate(px + charW / 2, w.y + CFG.charH / 2);
+          ctx.translate(px + gw / 2, w.y + CFG.charH / 2);
           ctx.scale(scale, scale);
           if (!light && k < 0.65) {
             const off = 2 + (1 - k) * 5;
             ctx.fillStyle = 'rgba(255, 0, 96, 0.9)';
-            ctx.fillText(glyph, -charW / 2 - off, -CFG.charH / 2);
+            ctx.fillText(glyph, -gw / 2 - off, -CFG.charH / 2);
             ctx.fillStyle = 'rgba(0, 238, 255, 0.9)';
-            ctx.fillText(glyph, -charW / 2 + off, -CFG.charH / 2);
+            ctx.fillText(glyph, -gw / 2 + off, -CFG.charH / 2);
           }
           ctx.fillStyle = k < 0.45
             ? COL.white
             : hsl(MOD(state.keyHue + i * 0.05, 1), 1, 0.7);
-          ctx.fillText(glyph, -charW / 2, -CFG.charH / 2);
+          ctx.fillText(glyph, -gw / 2, -CFG.charH / 2);
           ctx.restore();
           continue;
         }
@@ -3281,14 +3720,212 @@
 
   // Practice-line furniture: a blinking caret at the next character, plus the
   // Memorize state above the line (preview countdown, then the recall cue).
+  // ─── Card rendering ───────────────────────────────────────────────────────
+  // A card is a prompt that falls to the line and flips to show its answer.
+  // The text is measured with the real font (CJK faces included), not with the
+  // ASCII glyph advance, so a mixed deck wraps correctly.
+  function cardSetFont(size) {
+    ctx.font = 'bold ' + size + 'px ' + CARD_FAMILY;
+  }
+
+  function cardWrap(text, maxW, size) {
+    cardSetFont(size);
+    const out = [];
+    let line = '';
+    let lastSpace = -1;
+    for (const ch of String(text)) {
+      if (ch === ' ') lastSpace = line.length;
+      if (line && ctx.measureText(line + ch).width > maxW) {
+        const cut = lastSpace > 0 ? lastSpace : line.length;
+        out.push(line.slice(0, cut).trimEnd());
+        line = line.slice(cut).trimStart() + ch;
+        lastSpace = -1;
+      } else {
+        line += ch;
+      }
+    }
+    if (line.trim()) out.push(line.trim());
+    return out.length ? out : [''];
+  }
+
+  function cardFit(text, maxW, maxSize, minSize, maxLines) {
+    let size = maxSize;
+    while (size > minSize) {
+      const lines = cardWrap(text, maxW, size);
+      if (lines.length <= maxLines) return { size, lines };
+      size -= 2;
+    }
+    return { size: minSize, lines: cardWrap(text, maxW, minSize).slice(0, maxLines) };
+  }
+
+  function drawCardLines(lines, cx, top, lineHeight, color, shadow) {
+    ctx.textAlign = 'left';
+    if (shadow) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+      for (let i = 0; i < lines.length; i++) {
+        const w = ctx.measureText(lines[i]).width;
+        ctx.fillText(lines[i], cx - w / 2 + 2, top + i * lineHeight + 2);
+      }
+    }
+    ctx.textAlign = 'center';
+    ctx.fillStyle = color;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], cx, top + i * lineHeight);
+    }
+  }
+
+  function drawCustomCards() {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'cards' || state.phase !== 'playing') return;
+    const live = custom.cardLive;
+    if (!live) return;
+
+    const cx = W / 2;
+    const maxW = Math.max(240, W - CFG.pad * 2);
+    const floor = cardFloorY();
+    const promptFit = cardFit(
+      live.card.prompt, maxW,
+      Math.round(clamp(H * 0.055, 24, 46)), 18, 2
+    );
+    const answerFit = live.revealed
+      ? cardFit(live.card.answer, maxW, Math.round(clamp(H * 0.032, 15, 28)), 12, 4)
+      : null;
+    const promptLH = Math.round(promptFit.size * 1.2);
+    const answerLH = answerFit ? Math.round(answerFit.size * 1.32) : 0;
+    const gap = live.revealed ? Math.round(promptFit.size * 0.5) : 0;
+    const blockH = promptFit.lines.length * promptLH + gap +
+      (answerFit ? answerFit.lines.length * answerLH : 0);
+    let top = live.revealed ? Math.min(live.y, floor - blockH - 16) : live.y;
+    top = Math.max(24, Math.min(top, Math.max(24, floor - 10)));
+    const timeLeft = live.revealed ? 0 : clamp(1 - live.t / live.dur, 0, 1);
+    const urgent = !live.revealed && timeLeft < 0.22;
+
+    ctx.save();
+    ctx.textBaseline = 'top';
+
+    // Label above the card: the recall cue, or the answer cue once flipped.
+    ctx.font = CARD_LABEL_FONT;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = live.revealed ? COL.typed : (urgent ? COL.danger : COL.accent);
+    ctx.globalAlpha = 1;
+    ctx.fillText(
+      live.revealed
+        ? (live.timedOut ? 'ANSWER \u00b7 MISSED' : 'ANSWER')
+        : 'RECALL \u00b7 ' + (custom.cardDone + 1) + '/' + custom.total,
+      cx, top - 24
+    );
+    ctx.globalAlpha = 1;
+
+    // Prompt block.
+    cardSetFont(promptFit.size);
+    drawCardLines(promptFit.lines, cx, top, promptLH,
+      live.revealed ? COL.wordIdle : COL.wordSet, true);
+
+    // Answer block, with a short rule between prompt and answer.
+    if (live.revealed && answerFit) {
+      const ruleY = top + promptFit.lines.length * promptLH + gap * 0.5;
+      ctx.fillStyle = COL.typed;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(cx - 28, ruleY, 56, 1);
+      ctx.globalAlpha = 1;
+      cardSetFont(answerFit.size);
+      drawCardLines(answerFit.lines, cx, top + promptFit.lines.length * promptLH + gap,
+        answerLH, live.timedOut ? COL.amber : COL.typed, true);
+    }
+
+    // The fall itself is the timer: a thin bar under the prompt drains as the
+    // card approaches the line, so the pressure is readable without a number.
+    if (!live.revealed) {
+      const barW = Math.min(maxW, 460);
+      const barY = top + promptFit.lines.length * promptLH + 10;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.fillRect(cx - barW / 2, barY, barW, 2);
+      ctx.fillStyle = urgent ? COL.danger : COL.accent;
+      ctx.fillRect(cx - barW / 2, barY, Math.max(0, barW * timeLeft), 2);
+    }
+
+    // Key legend, parked in the top-right where a card can never reach it. It
+    // gets its own dark plate and a much larger font: this is the only place
+    // that tells a first-time player the drill's controls.
+    const legend = live.revealed
+      ? '1 AGAIN   2 GOOD   3 EASY   ENTER GOOD'
+      : 'SPACE REVEAL';
+    ctx.font = CARD_LEGEND_FONT;
+    ctx.textAlign = 'right';
+    const legendW = ctx.measureText(legend).width;
+    const legendRight = W - CFG.pad;
+    const legendTop = 12;
+    ctx.fillStyle = 'rgba(2, 1, 8, 0.78)';
+    ctx.fillRect(legendRight - legendW - 10, legendTop - 4, legendW + 18, 24);
+    ctx.fillStyle = live.revealed ? COL.accent : COL.white;
+    ctx.globalAlpha = 0.96;
+    ctx.fillText(legend, legendRight, legendTop);
+    ctx.restore();
+  }
+
+  // Prompts: the cue sits above the line and the answer is typed below it. The
+  // typed glyphs stay green; untyped glyphs are dots, so the answer is never
+  // shown but the player still sees their place in it.
+  function drawCustomPrompts() {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'prompts' || state.phase !== 'playing') return;
+    const word = custom.liveLine;
+    if (!word) return;
+    const cx = W / 2;
+    const maxW = Math.max(240, W - CFG.pad * 2);
+    const promptTop = Math.round(customLineY() - 88);
+
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    if (!custom.hidden) {
+      const fit = cardFit(word.prompt || '', maxW, Math.round(clamp(H * 0.045, 22, 38)), 16, 2);
+      cardSetFont(fit.size);
+      const lh = Math.round(fit.size * 1.2);
+      ctx.fillStyle = COL.amber;
+      for (let i = 0; i < fit.lines.length; i++) ctx.fillText(fit.lines[i], cx, promptTop + i * lh);
+      if (custom.memorize && custom.preview > 0) {
+        ctx.font = CARD_LABEL_FONT;
+        ctx.fillStyle = COL.target;
+        ctx.globalAlpha = 0.8;
+        ctx.fillText('HIDES IN ' + Math.ceil(custom.preview) + 's', cx, promptTop - 24);
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      ctx.font = CARD_LEGEND_FONT;
+      ctx.fillStyle = COL.accent;
+      ctx.globalAlpha = 0.85;
+      ctx.fillText('TYPE FROM MEMORY', cx, promptTop + 6);
+      ctx.globalAlpha = 1;
+    }
+
+    // The typed answer line: the prompt above was the cue, not this text.
+    ctx.font = WORD_FONT;
+    ctx.textAlign = 'left';
+    const y = word.y;
+    for (let i = 0; i < word.text.length; i++) {
+      const px = word.x + (word.offsets ? word.offsets[i] : i * charW);
+      if (i < word.progress) {
+        ctx.fillStyle = COL.typed;
+        ctx.fillText(word.text[i], px, y);
+      } else {
+        ctx.fillStyle = COL.hidden;
+        ctx.fillText('\u00b7', px, y);
+      }
+    }
+    drawTargetMarker(word, word.x, false);
+    ctx.restore();
+  }
+
   function drawCustomLineHints(w, x) {
     const custom = state.custom;
     if (!custom || state.phase !== 'playing' || state.words.indexOf(w) < 0) return;
     if (w.progress < w.text.length && Math.sin(state.t * 7.5) > 0) {
-      const px = x + w.progress * charW;
+      const px = x + (w.offsets ? w.offsets[w.progress] : w.progress * charW);
+      const gw = w.glyphW ? w.glyphW[w.progress] : charW;
       ctx.fillStyle = COL.typed;
       ctx.globalAlpha = 0.9;
-      ctx.fillRect(px + 1, w.y + CFG.charH - 3, Math.max(2, charW - 2), 2);
+      ctx.fillRect(px + 1, w.y + CFG.charH - 3, Math.max(2, gw - 2), 2);
       ctx.globalAlpha = 1;
     }
     if (!custom.memorize || w !== custom.liveLine) return;
@@ -3466,6 +4103,7 @@
 
   const ui = {
     app: $('app'),
+    imeSink: $('imeSink'),
     titleBar: $('titleBar'),
     titleText: $('titleText'),
     taskText: $('taskText'),
@@ -3543,6 +4181,7 @@
       memorize: $('customMemorize'),
       loop: $('customLoop'),
       clean: $('customClean'),
+      crisp: $('customCrisp'),
       saved: $('customSaved'),
       meta: $('customMeta'),
       hint: $('customHint'),
@@ -3708,6 +4347,7 @@
     const resume = resumePhase;
     resumePhase = null;
     if (resume === 'playing' && state.phase === 'paused') state.phase = 'playing';
+    if (state.phase === 'playing' && state.custom) focusImeSink();
     syncToPhase();
     updateMenuStates();
   }
@@ -3742,18 +4382,20 @@
   function customFormLayout() {
     if (!ui.custom || !ui.custom.layout) return 'lines';
     const active = ui.custom.layout.querySelector('.mode-btn[aria-pressed="true"]');
-    return active && active.dataset.layout === 'words' ? 'words' : 'lines';
+    return active ? customLayoutId(active.dataset.layout) : 'lines';
   }
 
   function setCustomLayout(layout) {
     if (!ui.custom || !ui.custom.layout) return;
-    const value = layout === 'words' ? 'words' : 'lines';
+    const value = customLayoutId(layout);
     ui.custom.layout.querySelectorAll('.mode-btn').forEach((btn) => {
-      btn.setAttribute('aria-pressed', String(btn.dataset.layout === value));
+      btn.setAttribute('aria-pressed', String(customLayoutId(btn.dataset.layout) === value));
     });
     if (ui.custom.memorize) {
-      ui.custom.memorize.disabled = value === 'words';
-      if (value === 'words') ui.custom.memorize.checked = false;
+      // Memorize is the "hide the cue after a preview" switch: meaningful for
+      // Lines and Prompts, not for a deck (own reveal) or a word rain.
+      ui.custom.memorize.disabled = value !== 'lines' && value !== 'prompts';
+      if (value !== 'lines' && value !== 'prompts') ui.custom.memorize.checked = false;
     }
   }
 
@@ -3762,14 +4404,40 @@
     const clean = !!(ui.custom.clean && ui.custom.clean.checked);
     const raw = ui.custom.text ? ui.custom.text.value : '';
     const cleaned = clean ? customCleanText(raw) : null;
-    const text = customNormaliseText(cleaned ? cleaned.text : raw);
+    const layout = customFormLayout();
+    const text = customLayoutText(cleaned ? cleaned.text : raw, layout);
+    const suffix = cleaned && cleaned.removed > 0 ? ` \u00b7 ${cleaned.removed} cleaned away` : '';
     if (!text.trim()) {
-      setText(ui.custom.meta, clean ? 'Paste some text to begin. Cleanup is on.' : 'Paste some text to begin.');
+      setText(ui.custom.meta, layout === 'cards'
+        ? 'Cards: one per line as prompt :: answer. Paste some text to begin.'
+        : layout === 'prompts'
+          ? 'Prompts: one per line as shown :: typed. Paste some text to begin.'
+          : (clean ? 'Paste some text to begin. Cleanup is on.' : 'Paste some text to begin.'));
       return;
     }
-    const layout = customFormLayout();
+    if (layout === 'cards') {
+      const counts = customCardCounts(text);
+      const skipped = counts.skipped
+        ? ` \u00b7 ${counts.skipped} line${counts.skipped === 1 ? '' : 's'} skipped (no ::)`
+        : '';
+      setText(
+        ui.custom.meta,
+        `${counts.cards} ${counts.cards === 1 ? 'card' : 'cards'} \u00b7 ${counts.chars} characters${skipped}${suffix}`
+      );
+      return;
+    }
+    if (layout === 'prompts') {
+      const counts = customPromptCounts(text);
+      const skipped = counts.skipped
+        ? ` \u00b7 ${counts.skipped} line${counts.skipped === 1 ? '' : 's'} skipped (no ::)`
+        : '';
+      setText(
+        ui.custom.meta,
+        `${counts.prompts} ${counts.prompts === 1 ? 'prompt' : 'prompts'} \u00b7 ${counts.chars} characters${skipped}${suffix}`
+      );
+      return;
+    }
     const counts = customCounts(text);
-    const suffix = cleaned && cleaned.removed > 0 ? ` \u00b7 ${cleaned.removed} cleaned away` : '';
     if (layout === 'words') {
       setText(ui.custom.meta, `${counts.tokens} falling words \u00b7 ${counts.chars} characters${suffix}`);
     } else {
@@ -3785,7 +4453,8 @@
     if (ui.custom.name) ui.custom.name.value = stage.name;
     if (ui.custom.text) ui.custom.text.value = stage.text;
     setCustomLayout(stage.layout);
-    if (ui.custom.memorize) ui.custom.memorize.checked = !!stage.memorize;
+    if (ui.custom.memorize) ui.custom.memorize.checked = !!stage.memorize &&
+      (customLayoutId(stage.layout) === 'lines' || customLayoutId(stage.layout) === 'prompts');
     if (ui.custom.loop) ui.custom.loop.checked = !!stage.loop;
     if (ui.custom.clean) ui.custom.clean.checked = stage.clean !== false;
     setCustomHint(`Loaded \u201c${stage.name}\u201d \u2014 edits stay local until you Save.`);
@@ -3815,7 +4484,15 @@
       const note = document.createElement('span');
       note.className = 'custom-saved-note';
       const counts = customCounts(stage.text);
-      note.textContent = (stage.layout === 'words' ? counts.tokens + ' words' : counts.lines + ' lines') +
+      const cardCounts = stage.layout === 'cards' ? customCardCounts(stage.text) : null;
+      const promptCounts = stage.layout === 'prompts' ? customPromptCounts(stage.text) : null;
+      note.textContent = (stage.layout === 'words'
+        ? counts.tokens + ' words'
+        : stage.layout === 'cards'
+          ? cardCounts.cards + ' cards'
+          : stage.layout === 'prompts'
+            ? promptCounts.prompts + ' prompts'
+            : counts.lines + ' lines') +
         (stage.memorize ? ' \u00b7 memorize' : '') + (stage.loop ? ' \u00b7 loop' : '');
       item.appendChild(name);
       item.appendChild(note);
@@ -3846,9 +4523,11 @@
     if (ui.custom.name) ui.custom.name.value = source ? source.name : '';
     ui.custom.text.value = source ? source.text : '';
     setCustomLayout(source ? source.layout : 'lines');
-    if (ui.custom.memorize) ui.custom.memorize.checked = !!(source && source.memorize);
+    if (ui.custom.memorize) ui.custom.memorize.checked = !source || !source.memorize ? false :
+      (customFormLayout() === 'lines' || customFormLayout() === 'prompts');
     if (ui.custom.loop) ui.custom.loop.checked = !!(source && source.loop);
     if (ui.custom.clean) ui.custom.clean.checked = !source || source.clean !== false;
+    if (ui.custom.crisp) ui.custom.crisp.checked = !!settings.crisp;
     setCustomHint(customStages.length
       ? `Saved stages: ${customStages.length} of ${CUSTOM.maxStages}. Click one to load it, or New for a fresh stage.`
       : 'Practice stage: no cards, no lives, no Pressure.');
@@ -3860,17 +4539,20 @@
     const raw = ui.custom.text ? ui.custom.text.value : '';
     const clean = !!(ui.custom.clean && ui.custom.clean.checked);
     const cleaned = clean ? customCleanText(raw) : null;
-    const text = customNormaliseText(cleaned ? cleaned.text : raw);
     const layout = customFormLayout();
-    const name = (String(ui.custom.name ? ui.custom.name.value : '').trim() || customDefaultName(text)).slice(0, 40);
-    const counts = customCounts(text);
+    const text = customLayoutText(cleaned ? cleaned.text : raw, layout);
+    const name = (String(ui.custom.name ? ui.custom.name.value : '').trim() ||
+      customDefaultName(text, layout)).slice(0, 40);
+    const counts = layout === 'cards' ? customCardCounts(text)
+      : layout === 'prompts' ? customPromptCounts(text) : customCounts(text);
     return {
       name,
       text,                        // cleaned + normalised preview (validation, counts)
       raw: String(raw),            // untouched paste, for Save and "clean off" starts
       clean,
       layout,
-      memorize: !!(ui.custom.memorize && ui.custom.memorize.checked),
+      memorize: (layout === 'lines' || layout === 'prompts') &&
+        !!(ui.custom.memorize && ui.custom.memorize.checked),
       loop: !!(ui.custom.loop && ui.custom.loop.checked),
       counts,
       removed: cleaned ? cleaned.removed : 0,
@@ -3887,6 +4569,14 @@
     }
     if (config.layout === 'words' && !config.counts.tokens) {
       setCustomHint('That text has no usable words (2 to 16 letters).');
+      return;
+    }
+    if (config.layout === 'cards' && !config.counts.cards) {
+      setCustomHint('That text has no cards. Use one per line: prompt :: answer.');
+      return;
+    }
+    if (config.layout === 'prompts' && !config.counts.prompts) {
+      setCustomHint('That text has no prompts. Use one per line: shown :: typed.');
       return;
     }
     if (config.layout === 'lines' && !config.counts.lines) {
@@ -3911,8 +4601,9 @@
     if (!ui.custom) return;
     const config = customReadConfig();
     // Save the raw paste (normalised only), so "Clean on start" stays a choice
-    // the player can turn off later instead of being baked into the stage.
-    const storedText = customNormaliseText(config.raw);
+    // the player can turn off later instead of being baked into the stage. A
+    // deck keeps its Unicode; only the typing layouts are ASCII-normalised.
+    const storedText = customLayoutText(config.raw, config.layout);
     if (!storedText.trim()) { setCustomHint('Nothing to save yet.'); return; }
     let stage = customEditingId ? customStages.find((s) => s.id === customEditingId) : null;
     if (stage) {
@@ -4001,7 +4692,23 @@
     const accuracy = totalKeys ? Math.round((state.keys / totalKeys) * 100) : 100;
     setText(ui.customResult.time, fmtTime(elapsed));
     const layout = custom ? custom.layout : 'lines';
-    const unit = layout === 'words' ? 'words' : 'lines';
+    if (layout === 'cards') {
+      // No keys, no misses, no WPM: a deck is scored on recall. First-try
+      // recalls are the headline; repeats are the honest number.
+      const done = custom.cardDone;
+      const total = custom.total;
+      const first = custom.cardFirst;
+      const again = custom.cardAgain;
+      const pass = custom.pass > 1 ? ` \u00b7 pass ${custom.pass}` : '';
+      setText(
+        ui.customResult.stats,
+        `${done}/${total} cards recalled \u00b7 ${first} first try \u00b7 ` +
+        `${again} ${again === 1 ? 'repeat' : 'repeats'} \u00b7 no typing${pass}`
+      );
+      setText(ui.customResult.name, custom.name);
+      return;
+    }
+    const unit = layout === 'words' ? 'words' : layout === 'prompts' ? 'prompts' : 'lines';
     const done = custom ? custom.done : 0;
     const total = custom ? custom.total : 0;
     const pass = custom && custom.pass > 1 ? ` \u00b7 pass ${custom.pass}` : '';
@@ -4037,6 +4744,10 @@
     state.dangerLevel = 0;
     closeMenus();
     ui.startMenu.classList.remove('open');
+    blurImeSink();
+    // Return to the roguelite's soft-focus scene resolution if a sharp drill
+    // was running.
+    resize();
     syncUi(true);
   }
 
@@ -4332,26 +5043,36 @@
       const key = [
         'custom', Math.floor(state.runSec), custom.layout, custom.pass, custom.done,
         custom.lineIndex, custom.total, custom.hidden ? 1 : 0, state.phase,
+        custom.cardDone, custom.cardLive ? custom.cardLive.index : -1,
+        custom.cardLive && custom.cardLive.revealed ? 1 : 0,
       ].join('|');
       if (key === uiStripKey) return;
       uiStripKey = key;
       const labels = stripLabelEls();
       if (labels.length > 0) labels[0].textContent = 'TIME';
-      if (labels.length > 1) labels[1].textContent = custom.layout === 'lines' ? 'LINE' : 'WORDS';
+      if (labels.length > 1) {
+        labels[1].textContent = custom.layout === 'lines'
+          ? 'LINE' : custom.layout === 'words' ? 'WORDS'
+            : custom.layout === 'prompts' ? 'PROMPT' : 'CARDS';
+      }
       if (labels.length > 2) labels[2].textContent = 'STAGE';
-      const done = custom.layout === 'lines'
+      const done = (custom.layout === 'lines' || custom.layout === 'prompts')
         ? (state.phase === 'customdone' ? custom.total : Math.min(custom.lineIndex + 1, custom.total))
-        : custom.done;
+        : custom.layout === 'cards' ? custom.cardDone : custom.done;
       setText(ui.strip.run, fmtTime(state.runSec));
-      // One fact per cell: loop pass on the left, the memorize cue in the
+      // One fact per cell: loop pass on the left, the memorize/recall cue in the
       // middle, the layout on the right. No repeated labels.
       setText(ui.strip.runSub, custom.loop ? `Loop ${custom.pass}` : '');
       setText(ui.strip.wave, `${done} / ${custom.total}`);
-      setText(ui.strip.waveSub, custom.memorize ? 'Memorize' : '');
+      setText(ui.strip.waveSub, custom.layout === 'cards'
+        ? (custom.cardLive && custom.cardLive.revealed ? 'Answer' : 'Recall')
+        : (custom.memorize ? 'Memorize' : ''));
       setClass(ui.strip.root, 'flash', false);
       setText(ui.strip.mode, 'CUSTOM');
       setText(ui.strip.best, custom.name.toUpperCase().slice(0, 18));
-      setText(ui.strip.bestSub, custom.layout === 'lines' ? 'Lines' : 'Falling words');
+      setText(ui.strip.bestSub, custom.layout === 'lines'
+        ? 'Lines' : custom.layout === 'words' ? 'Falling words'
+          : custom.layout === 'prompts' ? 'Prompts' : 'Cards');
       return;
     }
     restoreStripLabels();
@@ -4412,6 +5133,9 @@
       target && target.fake ? 1 : 0, reversed() ? 1 : 0, tunnelVisible() > 0 ? 1 : 0,
       state.custom ? 1 : 0, state.custom ? state.custom.lineIndex : -1,
       state.custom ? state.custom.done : -1, state.custom ? (state.custom.hidden ? 1 : 0) : 0,
+      state.custom ? state.custom.cardDone : -1,
+      state.custom && state.custom.cardLive ? state.custom.cardLive.index : -1,
+      state.custom && state.custom.cardLive && state.custom.cardLive.revealed ? 1 : 0,
     ].join('|');
     if (statusKey === uiStatusKey) return;
     uiStatusKey = statusKey;
@@ -4422,11 +5146,13 @@
       setText(ui.status.main, state.phase === 'customdone' ? 'Stage complete' : 'Practice');
       setText(ui.status.time, `Time: ${fmtTime(state.runSec)}`);
       setText(ui.status.mode, 'Mode: Custom');
-      setText(ui.status.score, `Cleared: ${custom.done}/${custom.total}`);
+      setText(ui.status.score, `Cleared: ${custom.layout === 'cards' ? custom.cardDone : custom.done}/${custom.total}`);
       setText(ui.status.combo, `Combo: ${comboMultiplier().toFixed(2)}\u00d7`);
-      setText(ui.status.wave, custom.layout === 'lines'
-        ? `Line: ${Math.max(1, Math.min(custom.lineIndex + 1, custom.total))}/${custom.total}`
-        : `Words: ${custom.done}/${custom.total}`);
+      setText(ui.status.wave, custom.layout === 'lines' || custom.layout === 'prompts'
+        ? `${custom.layout === 'prompts' ? 'Prompt' : 'Line'}: ${Math.max(1, Math.min(custom.lineIndex + 1, custom.total))}/${custom.total}`
+        : custom.layout === 'cards'
+          ? `Cards: ${custom.cardDone}/${custom.total}`
+          : `Words: ${custom.done}/${custom.total}`);
       setText(ui.status.lives, 'Lives: \u2014');
       setText(ui.status.shields, 'Shields: \u2014');
       setText(ui.status.heat, 'Heat: \u2014');
@@ -4480,7 +5206,11 @@
       if (state.custom) {
         label = state.custom.layout === 'lines'
           ? `Custom \u00b7 Line ${Math.max(1, Math.min(state.custom.lineIndex + 1, state.custom.total))}`
-          : 'Custom \u00b7 Words';
+          : state.custom.layout === 'cards'
+            ? `Custom \u00b7 Card ${Math.min(state.custom.cardDone + 1, state.custom.total)}`
+            : state.custom.layout === 'prompts'
+              ? `Custom \u00b7 Prompt ${Math.max(1, Math.min(state.custom.lineIndex + 1, state.custom.total))}`
+              : 'Custom \u00b7 Words';
       } else {
         label = `Wave ${Math.min(state.wave, CFG.wavesPerRun)}` + (state.endless ? ' (endless)' : '');
       }
@@ -4497,7 +5227,9 @@
     if (state.custom) {
       const custom = state.custom;
       setText(ui.deckField,
-        'Practice \u00b7 ' + (custom.layout === 'lines' ? 'Lines' : 'Words') +
+        'Practice \u00b7 ' + (custom.layout === 'lines'
+          ? 'Lines' : custom.layout === 'words' ? 'Words'
+            : custom.layout === 'prompts' ? 'Prompts' : 'Cards') +
         (custom.memorize ? ' \u00b7 Memorize' : '') + (custom.loop ? ' \u00b7 Loop' : ''));
       return;
     }
@@ -4547,6 +5279,39 @@
     if (item) item.classList.add('open');
   }
 
+  // ─── IME input ────────────────────────────────────────────────────────────
+  // Chrome/WebView2 route composition (pinyin -> 汉字) only to a focused text
+  // field. Custom stages park focus in a 1px invisible sink and consume the
+  // committed string; plain Latin typing still arrives through keydown.
+  function focusImeSink() {
+    if (!ui.imeSink) return;
+    try { ui.imeSink.focus({ preventScroll: true }); } catch (e) {
+      try { ui.imeSink.focus(); } catch (e2) { /* ignore */ }
+    }
+  }
+
+  function blurImeSink() {
+    if (ui.imeSink && document.activeElement === ui.imeSink) {
+      try { ui.imeSink.blur(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function syncImeFocus() {
+    if (state.phase === 'playing' && state.custom) focusImeSink();
+    else blurImeSink();
+  }
+
+  // Feed the committed characters through the normal typing rules, so lock-on,
+  // combo, progress, the line advance and the score all behave exactly as if
+  // they had been typed one key at a time.
+  function typeChunk(str) {
+    if (!state.custom || state.phase !== 'playing') return;
+    for (const ch of Array.from(String(str || ''))) {
+      if (state.phase !== 'playing' || !state.custom) return;
+      typeLetter(ch);
+    }
+  }
+
   function pauseGame() {
     if (state.phase !== 'playing') return false;
     closeMenus();
@@ -4560,6 +5325,7 @@
   function resumeGame() {
     if (state.phase !== 'paused') return false;
     state.phase = 'playing';
+    if (state.custom) focusImeSink();
     syncUi(true);
     return true;
   }
@@ -4581,6 +5347,9 @@
     // The field is a one-shot: after any start it goes back to "random".
     if (ui.seedInput) ui.seedInput.value = '';
     reset(seed);
+    blurImeSink();
+    // Back to the roguelite's soft-focus scene resolution after a sharp drill.
+    resize();
     syncUi(true);
   }
 
@@ -4782,7 +5551,7 @@
     });
 
     // toolbar
-    click('tbNew', startNewRun);
+    click('tbNew', () => runCommand('new'));
     click('tbSound', toggleSound);
     click('tbHelp', () => openOverlay('controls'));
 
@@ -4841,6 +5610,35 @@
     }
     if (ui.custom && ui.custom.clean) {
       ui.custom.clean.addEventListener('change', updateCustomMeta);
+    }
+    if (ui.custom && ui.custom.crisp) {
+      ui.custom.crisp.addEventListener('change', () => {
+        settings.crisp = !!ui.custom.crisp.checked;
+        saveStore();
+        // Re-size the scene now: a paused drill should switch immediately, and
+        // the next stage start reads the same flag.
+        resize();
+        updateMenuStates();
+      });
+    }
+    // IME: the committed string is the answer. The pinyin/candidate keystrokes
+    // themselves are ignored by the keydown guard, so they never count as
+    // misses, and a committed phrase is fed through the normal typing rules.
+    if (ui.imeSink) {
+      ui.imeSink.addEventListener('compositionend', (event) => {
+        const data = event.data || ui.imeSink.value || '';
+        ui.imeSink.value = '';
+        if (data) typeChunk(data);
+      });
+      ui.imeSink.addEventListener('input', () => {
+        const value = ui.imeSink.value || '';
+        if (!value) return;
+        ui.imeSink.value = '';
+        // Only non-ASCII text can double-count here; Latin was already handled
+        // by the keydown path.
+        const committed = Array.from(value).filter((ch) => ch.codePointAt(0) > 0x7e).join('');
+        if (committed) typeChunk(committed);
+      });
     }
     if (ui.custom && ui.custom.name) {
       ui.custom.name.addEventListener('keydown', (event) => {
@@ -5139,11 +5937,17 @@
   window.addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey) return;
 
+    // An IME is composing (pinyin/candidates): those keystrokes belong to the
+    // input method, not to the game. keyCode 229 is the legacy composition key.
+    if (event.isComposing || event.keyCode === 229 || event.key === 'Process') return;
+
     // Form fields own their keys. The seed field still passes Enter/Esc/F2
     // through; the custom-stage textarea is a real editor (Enter inserts a
-    // newline), and Esc always closes the dialog it belongs to.
+    // newline), and Esc always closes the dialog it belongs to. The IME sink is
+    // the exception: it is focused during a drill, so the game owns its keys.
     const fieldTag = event.target && event.target.tagName;
-    if (fieldTag === 'INPUT' || fieldTag === 'TEXTAREA') {
+    const isImeSink = !!(ui.imeSink && event.target === ui.imeSink);
+    if ((fieldTag === 'INPUT' || fieldTag === 'TEXTAREA') && !isImeSink) {
       if (event.key === 'Escape') {
         event.preventDefault();
         if (isInfoOverlay()) closeOverlay();
@@ -5215,6 +6019,15 @@
       return;
     }
 
+    // Cards: Space flips the card, 1/2/3 grade it, Enter is a quick Good.
+    // Everything else falls through, so Esc still pauses and F2 still restarts.
+    if (state.phase === 'playing' && state.custom && state.custom.layout === 'cards') {
+      if (cardKey(event.key)) {
+        event.preventDefault();
+        return;
+      }
+    }
+
     if (event.key === 'Enter') {
       if (state.phase === 'menu') startNewRun(seedFromInput());
       else if (state.phase === 'gameover') reset();
@@ -5248,7 +6061,7 @@
       // Space is a real character on a practice line; everywhere else it stays
       // swallowed so it can never be a hotkey in the roguelite.
       if (event.key === ' ' && state.phase === 'playing' &&
-          state.custom && state.custom.layout === 'lines') {
+          state.custom && (state.custom.layout === 'lines' || state.custom.layout === 'prompts')) {
         typeLetter(' ');
       }
       event.preventDefault();
@@ -5261,7 +6074,11 @@
     }
   });
 
-  window.addEventListener('pointerdown', ensureAudio);
+  window.addEventListener('pointerdown', () => {
+    ensureAudio();
+    // A click can move focus off the IME sink; put it back while a drill runs.
+    if (state.phase === 'playing' && state.custom) focusImeSink();
+  });
   window.addEventListener('resize', resize);
 
   // ─── Headless bot simulation ──────────────────────────────────────────────
@@ -5430,6 +6247,16 @@
       pressure: Number(fxPressure.toFixed(2)),
       quality: settings.fx,
     }),
+    scene: () => ({
+      logicalW: W,
+      logicalH: H,
+      sceneW: scene.width,
+      sceneH: scene.height,
+      canvasW: canvas.width,
+      canvasH: canvas.height,
+      sharp: sharpPractice(),
+      crisp: !!settings.crisp,
+    }),
     hexTotal: HEX_TOTAL,
     typeLetter,
     targetWord,
@@ -5471,6 +6298,17 @@
       state: () => state.custom,
       segments: customSegments,
       tokens: customTokens,
+      cards: customCards,
+      cardCounts: customCardCounts,
+      cardSource: customCardSource,
+      plain: customPlainText,
+      prompts: customPromptPairs,
+      promptCounts: customPromptCounts,
+      reveal: revealCard,
+      grade: gradeCard,
+      cardKey,
+      typeChunk,
+      imeFocused: () => !!(ui.imeSink && document.activeElement === ui.imeSink),
       counts: customCounts,
       clean: customCleanText,
       config: customConfigOf,
