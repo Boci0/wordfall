@@ -17,7 +17,7 @@ Read. Commit. Survive. Windows, Android and the browser. No account, no ads, no 
 
 [![Download for Windows](https://img.shields.io/badge/Windows-Download%20the%20app-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/Boci0/wordfall/releases/latest)
 &nbsp;
-[![Download for Android](https://img.shields.io/badge/Android-Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Boci0/wordfall/releases/latest)
+[![Download for Android](https://img.shields.io/badge/Android-Download%20the%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/Boci0/wordfall/releases/latest/download/Wordfall-android.apk)
 &nbsp;
 [![Play in browser](https://img.shields.io/badge/Browser-Play%20now-008080?style=for-the-badge&logo=googlechrome&logoColor=white)](https://boci0.github.io/wordfall/)
 
@@ -208,7 +208,7 @@ Grab the latest build below, or browse every file on the [releases page](https:/
 | Platform | Get it | Notes |
 | :--- | :--- | :--- |
 | **Windows 10/11** | [**Wordfall for Windows**](https://github.com/Boci0/wordfall/releases/latest) | The native app: a real borderless window and in-app updates. Download the win64 zip, extract it, run `Wordfall.exe`. |
-| **Android** | [**Wordfall for Android**](https://github.com/Boci0/wordfall/releases/latest) | A WebView app for Android 7.0+. Download `Wordfall-android-1.9.0.apk` and allow installs from unknown sources (it is debug-signed). |
+| **Android** | [**Wordfall for Android**](https://github.com/Boci0/wordfall/releases/latest/download/Wordfall-android.apk) | A WebView app for Android 7.0+. Downloads `Wordfall-android.apk` directly; allow installs from unknown sources (it is debug-signed). |
 | **Any browser** | [**Play Wordfall**](https://boci0.github.io/wordfall/) | Nothing to install. The complete fake desktop, menus and dialogs. |
 
 The browser build also runs straight from the repository: open `index.html`, with no server
