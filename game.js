@@ -5283,6 +5283,9 @@
   // Chrome/WebView2 route composition (pinyin -> 汉字) only to a focused text
   // field. Custom stages park focus in a 1px invisible sink and consume the
   // committed string; plain Latin typing still arrives through keydown.
+  // On a touchscreen the sink doubles as the keyboard opener for every run.
+  const touchPrimary = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
   function focusImeSink() {
     if (!ui.imeSink) return;
     try { ui.imeSink.focus({ preventScroll: true }); } catch (e) {
@@ -5297,7 +5300,7 @@
   }
 
   function syncImeFocus() {
-    if (state.phase === 'playing' && state.custom) focusImeSink();
+    if (state.phase === 'playing' && (state.custom || touchPrimary)) focusImeSink();
     else blurImeSink();
   }
 
@@ -5305,9 +5308,9 @@
   // combo, progress, the line advance and the score all behave exactly as if
   // they had been typed one key at a time.
   function typeChunk(str) {
-    if (!state.custom || state.phase !== 'playing') return;
+    if (state.phase !== 'playing') return;
     for (const ch of Array.from(String(str || ''))) {
-      if (state.phase !== 'playing' || !state.custom) return;
+      if (state.phase !== 'playing') return;
       typeLetter(ch);
     }
   }
@@ -5630,13 +5633,20 @@
         ui.imeSink.value = '';
         if (data) typeChunk(data);
       });
-      ui.imeSink.addEventListener('input', () => {
+      // Virtual keyboards report keyCode 229 for every key, so keydown never
+      // sees their Latin letters; the input event is then the only source.
+      let virtualKb = false;
+      ui.imeSink.addEventListener('keydown', (event) => {
+        virtualKb = event.keyCode === 229 && !event.isComposing;
+      });
+      ui.imeSink.addEventListener('input', (event) => {
         const value = ui.imeSink.value || '';
         if (!value) return;
         ui.imeSink.value = '';
-        // Only non-ASCII text can double-count here; Latin was already handled
-        // by the keydown path.
-        const committed = Array.from(value).filter((ch) => ch.codePointAt(0) > 0x7e).join('');
+        // With a physical keyboard only non-ASCII text can double-count here;
+        // Latin was already handled by the keydown path.
+        const viaVirtual = virtualKb && !event.isComposing;
+        const committed = Array.from(value).filter((ch) => viaVirtual || ch.codePointAt(0) > 0x7e).join('');
         if (committed) typeChunk(committed);
       });
     }
@@ -6078,6 +6088,10 @@
     ensureAudio();
     // A click can move focus off the IME sink; put it back while a drill runs.
     if (state.phase === 'playing' && state.custom) focusImeSink();
+  });
+  // A tap is the gesture that lets a phone raise its on-screen keyboard.
+  window.addEventListener('click', () => {
+    if (touchPrimary && state.phase === 'playing') focusImeSink();
   });
   window.addEventListener('resize', resize);
 

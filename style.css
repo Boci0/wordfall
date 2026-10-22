@@ -119,6 +119,20 @@ u { text-underline-offset: 1px; }
   transform: none !important;
 }
 
+/* Phones (portrait or landscape): the window fills the screen like a
+   maximized one, and the desktop icons get out of the way. */
+@media (max-width: 720px), (max-height: 520px) {
+  .desktop-icons { display: none; }
+  .app {
+    left: 0;
+    top: 0;
+    transform: none;
+    width: 100vw;
+    height: calc(100vh - 30px);
+    height: calc(100dvh - 30px);
+  }
+}
+
 /* ── Title bar ───────────────────────────────────────────────────────────── */
 .title-bar {
   height: 18px;

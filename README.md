@@ -206,6 +206,7 @@ Grab the latest build below, or browse every file on the [releases page](https:/
 | Platform | Get it | Notes |
 | :--- | :--- | :--- |
 | **Windows 10/11** | [**Wordfall for Windows**](https://github.com/Boci0/wordfall/releases/latest) | The native app: a real borderless window and in-app updates. Download the win64 zip, extract it, run `Wordfall.exe`. |
+| **Android** | [**Wordfall for Android**](https://github.com/Boci0/wordfall/releases/latest) | A WebView app for Android 7.0+. Download `Wordfall-android-1.9.0.apk` and allow installs from unknown sources (it is debug-signed). |
 | **Any browser** | [**Play Wordfall**](https://boci0.github.io/wordfall/) | Nothing to install. The complete fake desktop, menus and dialogs. |
 
 The browser build also runs straight from the repository: open `index.html`, with no server
@@ -347,6 +348,18 @@ published exe and runs its self-test. The four web files are embedded into the e
 time, so rebuild after changing the game. `install.ps1` copies the build into
 `%LOCALAPPDATA%\Programs\Wordfall` and (re)creates the desktop shortcut.
 
+**Android app** - a thin WebView wrapper around the same web files. Needs the Android SDK
+(platform 36) and a JDK; open `android/` in Android Studio, or from a terminal:
+
+```bash
+cd android
+./gradlew assembleDebug     # gradlew.bat on Windows
+```
+
+The APK lands in `android/app/build/outputs/apk/debug/`. The four web files are copied
+in at build time, so there is no second copy to keep in sync. The system Back button
+acts as Esc (pause, close a dialog) and leaves the app from the main menu.
+
 <details>
 <summary><b>Checks</b></summary>
 <br>
@@ -372,7 +385,7 @@ diagnostics and the balance lab are documented in the
 | :--- | :--- |
 | [SPEC.md](SPEC.md) | The design doc: rules, cards, milestones and tuning targets |
 | [TECHNICAL.md](TECHNICAL.md) | Renderer, presentation, native shell, updater, test harnesses and tuning |
-| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.8.0 |
+| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.9.0 |
 | [BALANCE-LAB.md](BALANCE-LAB.md) | Measured card power, draft-offer distribution and tuning recommendations |
 | [QA-REPORT.md](QA-REPORT.md) · [QA-REPORT-M6.md](QA-REPORT-M6.md) · [QA-REPORT-M7.md](QA-REPORT-M7.md) · [QA-JUICE.md](QA-JUICE.md) | Independent acceptance reviews for each milestone |
 | [QA-REPORT-V15.md](QA-REPORT-V15.md) · [QA-DECOY.md](QA-DECOY.md) | v1.5 verification, and the decoy / "long words don't die" investigation |
@@ -386,5 +399,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.8.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.9.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms, WebView2 and Android WebView &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>

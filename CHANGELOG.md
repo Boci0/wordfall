@@ -3,6 +3,31 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.9.0 - Mobile layout and Android app
+
+- **Android app.** A native Android build in `android/`: a thin WebView wrapper around the
+  same web files, copied in at build time so there is no second copy to keep in sync. It
+  runs fullscreen with the system bars hidden, keeps records, settings and custom stages in
+  local storage, and targets Android 7.0 and up. The system **Back** button acts as **Esc**
+  (pause, close a dialog) and leaves the app from the main menu.
+- **Phone layout.** On a narrow or short screen the window now fills the whole display like
+  a maximized one instead of staying a narrow strip, and the desktop icons step aside. It
+  applies in portrait and landscape, so the menus, the playfield and the signal strip use
+  the full width and no text is clipped.
+- **On-screen keyboard.** On a touchscreen a tap on the board focuses the invisible input,
+  which raises the keyboard, and the page resizes with `interactive-widget=resizes-content`
+  so the keyboard never covers the playfield. Keyboards that report every key as keyCode
+  229 are read through the input event, so their Latin letters count in the roguelite and in
+  practice stages alike; composing text is still handed over only on commit.
+- **Typing path.** `typeChunk` no longer requires a practice stage, so committed text feeds
+  the normal typing rules in a roguelite run too. The roguelite stays letters-only.
+- **Build.** `cd android && ./gradlew assembleDebug` produces
+  `android/app/build/outputs/apk/debug/app-debug.apk`. The release APK is debug-signed, so
+  Android asks to allow installs from unknown sources.
+- **Tests** - `tools/smoke.mjs` (202 checks), `qa-cards.mjs` (64), `qa-custom.mjs` (124),
+  `qa-unicode.mjs` (37) and `qa-v15.mjs` (56) pass unchanged. The phone layout was checked
+  at 390x844 with touch emulation; the APK has not been run on a physical device.
+
 ## v1.8.0 - Cards, Prompts and multilingual practice
 
 - **Cards layout.** Custom Stage gains a third layout for memorization rather than typing.

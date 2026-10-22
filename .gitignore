@@ -13,3 +13,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

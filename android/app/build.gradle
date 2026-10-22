@@ -1,0 +1,37 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.boci0.wordfall'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.boci0.wordfall'
+        minSdk 24
+        // 34 keeps windowSoftInputMode=adjustResize working without edge-to-edge inset code.
+        targetSdk 34
+        versionCode 2
+        versionName '1.9.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main.assets.srcDirs += layout.buildDirectory.dir('web')
+    }
+}
+
+// The game is the repo's own web build; copy it in instead of keeping a second copy.
+tasks.register('copyWeb', Copy) {
+    from(rootProject.projectDir.parentFile) {
+        include 'index.html', 'game.js', 'style.css', 'words.js', 'assets/**'
+    }
+    into layout.buildDirectory.dir('web')
+}
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn 'copyWeb'
+}
