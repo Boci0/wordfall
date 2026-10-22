@@ -3,6 +3,33 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.9.2 - Android updater and phone cutoff fixes
+
+- **Android in-app updater.** Help > Check for Updates… now works in the Android app
+  (it used `window.open`, which does nothing in a WebView). The app asks GitHub for the
+  latest release, compares its tag with the installed version, and offers **Update** or
+  **Later**; Update downloads `Wordfall-android.apk` with a progress readout and hands it to
+  Android's installer through a `FileProvider`. A quiet check also runs a few seconds after
+  launch and only speaks up when a newer release exists. The first install asks Android to
+  allow Wordfall to install apps. Updates install over the existing app as long as they are
+  signed with the same key. The first version with the updater has to be installed by hand.
+- **Dialog buttons wrap.** Four-button rows (Game Over, Pause, Custom Stage) overflowed the
+  dialog on a phone and clipped the leftmost button. The row now wraps, the buttons flex to
+  fit, and they are 32 px tall so they are easier to tap.
+- **Long lines wrap.** The Pause seed line and the signal strip's `Wave n · 0/10 cleared`
+  wrap instead of ending in an ellipsis, and the draft cards leave room for their `[1]`
+  `[2]` `[3]` key labels.
+- **Landscape phone.** On a screen under 520 px tall the toolbar and taskbar step aside and
+  the main screen and draft are trimmed, so Start Run, the menu items, Reroll and Skip are
+  all on screen instead of below the fold.
+- **Tall dialogs.** A dialog taller than the screen scrolls with its button row pinned to
+  the bottom, so OK, Save and Start stay reachable.
+- **Tests** - `tools/qa-cards.mjs` (64), `qa-custom.mjs` (124), `qa-unicode.mjs` (37) and
+  `qa-v15.mjs` (56) pass unchanged; `smoke.mjs` passes 201 of 202, the one miss being the
+  known machine-sensitive `M7 perf` long-frame check. Layout was checked at 360x780,
+  360x430 and 780x360 with touch emulation. The updater's download and install steps have
+  not been run on a physical device.
+
 ## v1.9.1 - Phone readability fixes
 
 - **Readable playfield on a phone.** With the keyboard up the board is far shorter than the

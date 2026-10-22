@@ -5471,6 +5471,7 @@
       // The desktop shell owns the updater; in a browser just point at the releases.
       case 'update':
         if (nativeHost) hostMessage('check-update');
+        else if (window.WordfallAndroid) window.WordfallAndroid.checkUpdate();
         else window.open('https://github.com/Boci0/wordfall/releases/latest', '_blank', 'noopener');
         break;
       case 'shutdown': onClose(); break;

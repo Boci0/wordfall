@@ -1232,6 +1232,37 @@ body.practice #toolbar .tool-sep {
   margin: 3px 2px;
 }
 
+/* Phone dialogs: button rows wrap instead of overflowing the dialog, long lines
+   wrap instead of being ellipsised, and touch targets are finger-sized. */
+@media (max-width: 720px) {
+  .dialog-buttons { flex-wrap: wrap; padding: 6px 8px 10px; }
+  .dialog-buttons .btn { flex: 1 1 auto; min-width: 64px; height: 32px; }
+  .pause-seed { white-space: normal; }
+  .strip-sub { letter-spacing: 0; white-space: normal; line-height: 1.2; }
+  .strip-cell + .strip-cell { padding-left: 8px; }
+  .draft-card { padding-bottom: 22px; }
+  .draft-card .draft-desc { overflow-wrap: anywhere; }
+}
+
+/* A dialog taller than the screen scrolls, with its buttons pinned in view. */
+@media (max-width: 720px), (max-height: 520px) {
+  .dialog-buttons { position: sticky; bottom: 0; background: var(--face); }
+}
+
+/* Landscape phone (about 360px tall): drop the toolbar and taskbar, and trim the
+   main screen and draft so Start Run, every menu item and the Skip button show. */
+@media (max-height: 520px) {
+  .toolbar, .taskbar { display: none; }
+  .app { height: 100vh; height: 100dvh; }
+  .main-body { gap: 10px; padding: 8px 12px 4px; }
+  .main-hero { gap: 6px; }
+  .main-wordmark { font-size: 26px; }
+  .main-mode-note, .main-hint, .main-seed-note, .main-stats, .main-tagline { display: none; }
+  .main-icon { width: 34px; height: 34px; }
+  .draft-log, .draft-note, .draft-held { display: none; }
+  .draft-card { min-height: 0; padding: 6px 8px 20px; }
+}
+
 /* Phone status bar: the five readouts that matter share the width evenly. */
 @media (max-width: 720px) {
   #statusMain, #statusHeat, #statusPressure { display: none; }

@@ -11,8 +11,8 @@ android {
         minSdk 24
         // 34 keeps windowSoftInputMode=adjustResize working without edge-to-edge inset code.
         targetSdk 34
-        versionCode 3
-        versionName '1.9.1'
+        versionCode 4
+        versionName '1.9.2'
     }
 
     compileOptions {
@@ -23,6 +23,10 @@ android {
     sourceSets {
         main.assets.srcDirs += layout.buildDirectory.dir('web')
     }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
 }
 
 // The game is the repo's own web build; copy it in instead of keeping a second copy.
