@@ -3,6 +3,64 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.5.0 - main screen, run clock, splits, achievements and difficulty
+
+- **A real main screen.** The game now opens on a full Win95 title screen instead of a small
+  welcome dialog: the Wordfall wordmark, a big **Start Run** button, Casual / Standard /
+  Nightmare selection, shortcuts to Records, Splits, Achievements, Controls, About and Quit,
+  and a live stats panel (best score, fastest Dawn, Dawns). Attract-mode words drift behind
+  the panel on the soft-focus field. **File → Main Menu** and the pause / game-over dialogs
+  now return to it.
+- **The run has a clock.** A live `Time: MM:SS` readout sits in the status bar and in the
+  signal strip. It runs only while the board is live, so pauses, drafts, the wave-clear beat
+  and dialogs never count towards it.
+- **Wave splits.** Every wave is timed from its first word to its tenth clear. The new
+  signal strip below the danger line shows the live split, the previous split and the
+  personal best for that wave; the best split per wave is stored on this machine. A new
+  **Game → Splits…** dialog (also reachable from **Records → Splits…**) lists all twelve
+  waves with best split, best cumulative time and this run's splits. Endless waves 13+ are
+  still timed in the strip, tagged `ENDLESS`, but do not enter the twelve-wave PB table.
+- **Fifteen achievements.** First clear, combo and score milestones, wave 5 and 12, Dawn,
+  a flawless wave, a ten-letter word, a flare catch, a sub-five-minute Dawn, a Nightmare
+  Dawn and more. Unlocks raise a Win95 notification in the corner of the window and are
+  listed with their dates in **Game → Achievements…**; the menu shows the count. Nothing
+  is sent anywhere.
+- **Three difficulties.** **Casual** starts with two lives and falls/spawns 15% slower,
+  **Nightmare** keeps one life and falls 15% faster while spawning 10% tighter, and
+  **Standard** is the existing balance. Pick one on the main screen or cycle it from
+  **Game → Difficulty**; the choice is remembered and named on the result screen.
+- **The signal strip.** The empty black band below the danger line is now a readout: run
+  clock and wave progress on the left, the this-wave split and PB in the centre, mode,
+  best score and fastest Dawn on the right. Completed waves flash the centre readout gold
+  and show the delta against the wave PB without covering the playfield.
+- **Wave-clear animations no longer overlap.** The split announcement moved into the
+  strip, the duplicate "RECEIVER PATCHED" callout is gone, the "WAVE n CLEARED" title card
+  holds the centre of the screen on its own, and a combo milestone that lands exactly on
+  the tenth clear no longer fights the title card. Achievement notifications sit clear of
+  the strip.
+- **Decoy fakes can no longer be mistaken for real targets** - found during the same
+  playtest review. A fake that becomes the lowest word used to be re-coloured as a
+  normal target, leaving only a 1-px line as a tell; it now keeps its magenta colour and
+  its dashed target box, gains a hard **DECOY** tag and double underline, prints a one-time
+  "DECOY · LET IT PASS" cue, and the status bar spells out `DECOY - WAIT`. The rule itself
+  is unchanged: every key is still a mistake while a fake is the lowest word.
+- **Long words get a little more air.** Nine- and ten-letter words now fall 8% slower. The
+  playtest line "the word is so long I die" was hyperbole about length pressure, not a
+  stuck word - this softens the late-run spike without touching the length ramp, and
+  **Casual** gives a gentler option for the same complaint.
+- **Status bar** spells out active hexes that change the typing rule (`REVERSE`, `TUNNEL`)
+  and the wave clock, so a word that is not accepting keys always has a visible reason. It
+  also resets to zero when **Main Menu** abandons a run instead of keeping the old numbers.
+- **Performance.** The target set is computed once per rendered frame instead of three or
+  four times; the back-to-front word draw reuses one scratch array instead of allocating a
+  sorted copy every frame; the status bar is rebuilt only when a value it shows changes.
+  A new synchronous benchmark (`window.__wordfall.benchScene`) measures update+render CPU
+  independently of vsync - the v1.5 frame costs ~0.4 ms of CPU with a full board on this
+  machine.
+- **Tests** - new `tools/qa-v15.mjs` acceptance pass (56 checks) for the main screen, clock,
+  splits, achievements, difficulty, decoy presentation, long-word clears and pacing, and the
+  frame CPU budget, alongside the existing smoke and bot suites.
+
 ## v1.4.1 - softer blur, flare words
 
 - **Softer blur.** The playfield is now rendered at 55% of the display resolution instead
@@ -129,5 +187,6 @@ All notable changes to Wordfall. Every release is also published on the
 - [x] v1.3 - native in-app updater (GitHub release check, SHA-256-verified download, staged swap + relaunch, Help → Check for Updates…), Controls copy fixes
 - [x] v1.4 - juice pass: per-letter detonations, word comet trails, reactive equaliser, louder mechanical key sounds (the plasma/glitch look was replaced by the soft-focus renderer in v1.4.1)
 - [x] v1.4.1 - soft-focus renderer at 55% resolution, flare words, first updater-driven release
+- [x] v1.5 - run clock, wave splits + signal strip, fifteen achievements, three difficulty modes, Decoy readability fix
 - [x] Windows 95 presentation + native WinForms/WebView2 build
 - [x] Relay 12 background, draft log, trippy signal field + smoothed difficulty curve

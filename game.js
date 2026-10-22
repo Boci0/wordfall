@@ -93,6 +93,45 @@
     flareSpeedMult: 2.5,
   };
 
+  // ─── Difficulty ───────────────────────────────────────────────────────────
+  // Difficulty is a survivability dial, not a scoring one: the record book and
+  // the achievements are shared, so the numbers on screen stay comparable. A
+  // harder run simply reaches fewer points before it ends.
+  const DIFFICULTIES = {
+    casual: {
+      id: 'casual',
+      name: 'Casual',
+      startLives: 2,
+      speed: 0.85,
+      spawn: 1.15,
+      desc: 'Two lives · words fall 15% slower · spawns 15% slower',
+    },
+    standard: {
+      id: 'standard',
+      name: 'Standard',
+      startLives: 1,
+      speed: 1,
+      spawn: 1,
+      desc: 'One life · the balance the game is tuned around',
+    },
+    nightmare: {
+      id: 'nightmare',
+      name: 'Nightmare',
+      startLives: 1,
+      speed: 1.15,
+      spawn: 0.9,
+      desc: 'One life · words fall 15% faster · spawns 10% tighter',
+    },
+  };
+  const DIFFICULTY_ORDER = ['casual', 'standard', 'nightmare'];
+
+  function difficulty() {
+    return DIFFICULTIES[settings.difficulty] || DIFFICULTIES.standard;
+  }
+  function difficultyName() {
+    return difficulty().name;
+  }
+
   // Relay 12: one story beat after each cleared wave. These are flavor only  - 
   // no rule reads them. The endless line replaces the table after wave 12.
   const RELAY_LOG = [
@@ -109,6 +148,13 @@
     'Hold the line.',
   ];
   const ENDLESS_LOG = 'The channel is still open.';
+
+  // Attract mode behind the main screen: relay-flavoured words drifting down the
+  // soft-focus field. Presentation only, never read by a rule.
+  const MENU_RAIN_WORDS = [
+    'signal', 'relay', 'dawn', 'static', 'transmit', 'frequency',
+    'hold', 'line', 'wordfall', 'night', 'operator', 'channel',
+  ];
 
   // Win95 palette for chrome, plus a few "signal" accents the playfield uses.
   // The backdrop is full colour now; the word colours stay high-contrast so the
@@ -253,6 +299,7 @@
   let W = 0;
   let H = 0;
   let charW = 0;
+  const drawOrder = [];          // reused scratch list for back-to-front word draw
 
   // Slow, dim colour drifting behind the words. These are a handful of huge,
   // low-alpha discs - not warped shapes - and the low-resolution upscale turns
@@ -378,6 +425,16 @@
     keys: 0,                  // correct letters typed this run
     mistakes: 0,              // wrong keys this run (shield-eaten included)
     runSec: 0,                // seconds spent in the 'playing' phase
+    waveStartSec: 0,          // runSec when the current wave began (drives splits)
+    waveSplits: [],           // seconds spent in each wave this run
+    waveMistakes: 0,          // wrong keys pressed during the current wave
+    cleanWaves: 0,            // waves cleared with no wrong keys at all (achievements)
+    longestClear: 0,          // longest word cleared this run (achievements)
+    flaresCleared: 0,         // flare words cleared this run (achievements)
+    splitFlashT: 0,           // signal-strip highlight after a wave split
+    lastSplit: null,          // {wave, split, delta, newSplit} for the strip readout
+    menuRain: [],             // attract-mode words drifting behind the main screen
+    difficulty: 'standard',
     spawnCount: 0,            // successful spawns (drives the Split card)
     lifelineUsed: false,      // Lifeline saves exactly one life per run
     runRecorded: false,
@@ -389,7 +446,31 @@
     heatMult: { get: () => heatMult(), enumerable: true },
   });
 
+  // ─── Achievements ─────────────────────────────────────────────────────────
+  // Everything here is presentation and persistence only: `evaluateAchievements`
+  // is skipped while the headless bot simulates, so tuning runs stay identical.
+  // `test` reads live state, so one pass after any scoring event is enough.
+  const ACHIEVEMENTS = [
+    { id: 'first-clear', name: 'Signal Acquired', desc: 'Clear your first word.', test: () => state.cleared >= 1 },
+    { id: 'combo-10', name: 'Chain Reaction', desc: 'Reach a 10 clear combo.', test: () => state.bestCombo >= 10 },
+    { id: 'combo-25', name: 'Overdrive', desc: 'Reach a 25 clear combo.', test: () => state.bestCombo >= 25 },
+    { id: 'wave-5', name: 'Relay Online', desc: 'Reach wave 5.', test: () => state.wave >= 5 },
+    { id: 'wave-12', name: 'Last Operator', desc: 'Reach wave 12.', test: () => state.wave >= 12 },
+    { id: 'dawn', name: 'Dawnbreaker', desc: 'Survive all twelve waves to Dawn.', test: () => state.dawn },
+    { id: 'score-10k', name: 'Ten Thousand', desc: 'Score 10,000 in one run.', test: () => state.score >= 10000 },
+    { id: 'score-50k', name: 'Carrier Wave', desc: 'Score 50,000 in one run.', test: () => state.score >= 50000 },
+    { id: 'words-100', name: 'Transcriptionist', desc: 'Clear 100 words in one run.', test: () => state.cleared >= 100 },
+    { id: 'flawless-wave', name: 'Clean Signal', desc: 'Clear a whole wave without a single wrong key.', test: () => state.cleanWaves >= 1 },
+    { id: 'long-word', name: 'Full Bandwidth', desc: 'Clear a 10 letter word.', test: () => state.longestClear >= 10 },
+    { id: 'flare', name: 'Flare Chaser', desc: 'Catch a flare word.', test: () => state.flaresCleared >= 1 },
+    { id: 'speed-dawn', name: 'Fast Forward', desc: 'Reach Dawn in under five minutes.', test: () => state.dawn && state.runSec <= 300 },
+    { id: 'nightmare-dawn', name: 'Night Shift', desc: 'Reach Dawn on Nightmare.', test: () => state.dawn && state.difficulty === 'nightmare' },
+    { id: 'endless-15', name: 'Still Listening', desc: 'Reach wave 15 after Dawn.', test: () => state.endless && state.wave >= 15 },
+  ];
+  const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
+
   // ─── Persistence: best score, lifetime records, settings ─────────────────
+
   const RECORD_DEFAULTS = {
     runs: 0,
     dawns: 0,
@@ -400,7 +481,14 @@
     fastestDawnSec: 0,
   };
   const records = Object.assign({}, RECORD_DEFAULTS);
-  const settings = { muted: false, fx: 'full' };
+  const settings = { muted: false, fx: 'full', difficulty: 'standard' };
+
+  // Achievements and wave-split PBs live in their own keys so the long-standing
+  // records blob keeps its shape (and its migrations) intact.
+  const ACH_KEY = 'wordfall.achievements';
+  const SPLIT_KEY = 'wordfall.splits';
+  const achieved = Object.create(null);          // achievement id -> unlock timestamp
+  const splitStore = { split: [], cum: [] };     // best split / best cumulative per wave
 
   // Respect the OS "reduce motion" preference on first launch; the player can
   // always switch back with View → Effects.
@@ -428,10 +516,35 @@
         const parsed = JSON.parse(rawSettings);
         if (parsed && typeof parsed.muted === 'boolean') settings.muted = parsed.muted;
         if (parsed && (parsed.fx === 'full' || parsed.fx === 'light')) settings.fx = parsed.fx;
+        if (parsed && DIFFICULTIES[parsed.difficulty]) settings.difficulty = parsed.difficulty;
+      }
+      // Achievements: only ids that still exist are kept, and only a positive
+      // timestamp counts as unlocked.
+      const rawAch = localStorage.getItem(ACH_KEY);
+      if (rawAch) {
+        const parsed = JSON.parse(rawAch);
+        for (const id of Object.keys(parsed || {})) {
+          const when = Number(parsed[id]);
+          if (ACH_BY_ID[id] && Number.isFinite(when) && when > 0) achieved[id] = when;
+        }
+      }
+      // Wave-split PBs: two arrays of finite positive seconds.
+      const rawSplits = localStorage.getItem(SPLIT_KEY);
+      if (rawSplits) {
+        const parsed = JSON.parse(rawSplits);
+        for (const key of ['split', 'cum']) {
+          const list = parsed && parsed[key];
+          if (!Array.isArray(list)) continue;
+          for (let i = 0; i < CFG.wavesPerRun; i++) {
+            const v = Number(list[i]);
+            if (Number.isFinite(v) && v > 0) splitStore[key][i] = v;
+          }
+        }
       }
     } catch (e) { /* file:// or privacy mode */ }
     state.best = records.bestScore;
     state.muted = settings.muted;
+    state.difficulty = settings.difficulty;
   }
   loadStore();
 
@@ -439,8 +552,20 @@
     try {
       localStorage.setItem('wordfall.records', JSON.stringify(records));
       localStorage.setItem('wordfall.best', String(records.bestScore));
-      localStorage.setItem('wordfall.settings', JSON.stringify({ muted: !!settings.muted, fx: settings.fx }));
+      localStorage.setItem('wordfall.settings', JSON.stringify({
+        muted: !!settings.muted,
+        fx: settings.fx,
+        difficulty: settings.difficulty,
+      }));
     } catch (e) { /* ignore */ }
+  }
+
+  function saveAchievements() {
+    try { localStorage.setItem(ACH_KEY, JSON.stringify(achieved)); } catch (e) { /* ignore */ }
+  }
+
+  function saveSplits() {
+    try { localStorage.setItem(SPLIT_KEY, JSON.stringify(splitStore)); } catch (e) { /* ignore */ }
   }
 
   // Called exactly once per finished run (game over or Dawn).
@@ -461,6 +586,7 @@
     records.words += state.cleared;
     state.best = records.bestScore;
     saveStore();
+    evaluateAchievements();
   }
 
   // ─── Run statistics ──────────────────────────────────────────────────────
@@ -478,6 +604,131 @@
   }
   function fmtInt(n) {
     return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Splits are read to a tenth of a second: the difference between a good wave
+  // and a great one is usually a few keypresses, not a whole second.
+  function fmtSplit(sec) {
+    const v = Math.max(0, Number(sec) || 0);
+    const m = Math.floor(v / 60);
+    const s = Math.floor(v % 60);
+    const tenths = Math.floor((v * 10) % 10);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + tenths;
+  }
+
+  function fmtDelta(sec) {
+    const v = Number(sec) || 0;
+    const sign = v < 0 ? '-' : '+';
+    return sign + Math.abs(v).toFixed(1) + 's';
+  }
+
+  // ─── Wave splits ──────────────────────────────────────────────────────────
+  // A split is the time spent inside one wave of play. runSec only advances in
+  // the 'playing' phase, so drafts, pauses and the wave-clear beat never leak in.
+  function registerWaveSplit(wave, split) {
+    const idx = wave - 1;
+    if (idx < 0) return null;
+    const cumulative = state.runSec;
+    const prev = splitStore.split[idx] || 0;
+    const prevCum = splitStore.cum[idx] || 0;
+    const newSplit = (!prev || split < prev) && split >= 0.05;
+    const newCum = (!prevCum || cumulative < prevCum) && split >= 0.05;
+    // Waves past the twelfth are endless and have no slot in the table.
+    if (idx < CFG.wavesPerRun) {
+      if (newSplit) splitStore.split[idx] = split;
+      if (newCum) splitStore.cum[idx] = cumulative;
+      if (newSplit || newCum) saveSplits();
+    }
+    return {
+      prev,
+      cumulative,
+      prevCum,
+      newSplit: idx < CFG.wavesPerRun && newSplit,
+      newCum: idx < CFG.wavesPerRun && newCum,
+      delta: prev ? split - prev : 0,
+      cumDelta: prevCum ? cumulative - prevCum : 0,
+    };
+  }
+
+  function announceSplit(wave, split, info) {
+    if (state.simulating || !info) return;
+    // The wave-clear title card owns the centre of the playfield. The split is
+    // announced in the signal strip instead, so the two never overlap.
+    state.splitFlashT = 2.2;
+    state.lastSplit = {
+      wave,
+      split,
+      delta: info.delta,
+      newSplit: info.newSplit,
+      // Only the very first wave of a run has no split to compare against.
+      // Waves 13+ are endless and have no PB slot, so they are labelled as
+      // endless instead of pretending to be a "first split" every time.
+      first: wave === 1,
+      endless: wave > CFG.wavesPerRun,
+    };
+  }
+
+  // ─── Achievements ─────────────────────────────────────────────────────────
+  function achievementCount() {
+    let n = 0;
+    for (const a of ACHIEVEMENTS) if (achieved[a.id]) n += 1;
+    return n;
+  }
+
+  function evaluateAchievements() {
+    if (state.simulating) return;
+    for (const a of ACHIEVEMENTS) {
+      if (achieved[a.id]) continue;
+      let ok = false;
+      try { ok = !!a.test(); } catch (e) { ok = false; }
+      if (ok) unlockAchievement(a);
+    }
+  }
+
+  function unlockAchievement(a) {
+    if (!a || achieved[a.id] || state.simulating) return false;
+    achieved[a.id] = Date.now();
+    saveAchievements();
+    pushToast(a);
+    playAchievement();
+    updateAchievementsMenu();
+    if (uiModal === 'achievements') populateAchievements();
+    return true;
+  }
+
+  // Win95-style notification window in the bottom-right of the app.
+  function pushToast(a) {
+    const stack = document.getElementById('toastStack');
+    if (!stack) return;
+    const el = document.createElement('div');
+    el.className = 'toast';
+    const title = document.createElement('div');
+    title.className = 'toast-title';
+    title.textContent = 'Achievement unlocked';
+    const body = document.createElement('div');
+    body.className = 'toast-body';
+    const mark = document.createElement('div');
+    mark.className = 'toast-mark';
+    mark.textContent = '\u2713';
+    const text = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'toast-name';
+    name.textContent = a.name;
+    const desc = document.createElement('div');
+    desc.className = 'toast-desc';
+    desc.textContent = a.desc;
+    text.appendChild(name);
+    text.appendChild(desc);
+    body.appendChild(mark);
+    body.appendChild(text);
+    el.appendChild(title);
+    el.appendChild(body);
+    stack.appendChild(el);
+    while (stack.children.length > 3) stack.removeChild(stack.firstChild);
+    setTimeout(() => {
+      el.classList.add('out');
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 240);
+    }, 4200);
   }
 
   function reset(seed) {
@@ -498,7 +749,7 @@
     state.cleared = 0;
     state.wave = 1;
     state.waveCleared = 0;
-    state.lives = CFG.startLives;
+    state.lives = difficulty().startLives;
     state.shields = 0;
     state.shieldMax = 0;
     state.deck = {};
@@ -535,6 +786,15 @@
     state.keys = 0;
     state.mistakes = 0;
     state.runSec = 0;
+    state.waveStartSec = 0;
+    state.waveSplits = [];
+    state.waveMistakes = 0;
+    state.cleanWaves = 0;
+    state.longestClear = 0;
+    state.flaresCleared = 0;
+    state.splitFlashT = 0;
+    state.lastSplit = null;
+    state.difficulty = settings.difficulty;
     state.spawnCount = 0;
     state.lifelineUsed = false;
     state.runRecorded = false;
@@ -736,11 +996,12 @@
     const drought = heldTier('drought');
     if (drought >= 2) t *= 1.2;
     else if (drought >= 1) t *= 1.15;
+    t *= difficulty().spawn;
     return t;
   }
 
   function baseSpeedNow() {
-    return Math.min(CFG.maxSpeed, CFG.baseSpeed + pressure() * CFG.speedPerClear);
+    return Math.min(CFG.maxSpeed, CFG.baseSpeed + pressure() * CFG.speedPerClear) * difficulty().speed;
   }
 
   // ─── Word spawn ───────────────────────────────────────────────────────────
@@ -874,23 +1135,52 @@
   }
 
   // ─── Target set / lock-on ─────────────────────────────────────────────────
+  // The target set is asked for several times per rendered frame (word colours,
+  // title flags, danger glow). A frame-scoped cache keeps that to one sort while
+  // input events, which run between frames, always see fresh state.
+  let renderStamp = 0;
+  let renderCacheActive = false;
+  let targetSetStamp = -1;
+  let targetSetCache = [];
+  let targetWordStamp = -1;
+  let targetWordCache = null;
+
   function targetSet() {
-    if (!state.words.length) return [];
-    if (state.lockWord && state.words.indexOf(state.lockWord) >= 0) {
-      return [state.lockWord];
+    if (renderCacheActive && targetSetStamp === renderStamp) return targetSetCache;
+    let result;
+    if (!state.words.length) {
+      result = [];
+    } else if (state.lockWord && state.words.indexOf(state.lockWord) >= 0) {
+      result = [state.lockWord];
+    } else {
+      const sorted = state.words.slice().sort((a, b) => b.y - a.y);
+      result = sorted.slice(0, targetSetSize());
     }
-    const sorted = state.words.slice().sort((a, b) => b.y - a.y);
-    return sorted.slice(0, targetSetSize());
+    if (renderCacheActive) {
+      targetSetStamp = renderStamp;
+      targetSetCache = result;
+    }
+    return result;
   }
 
   function targetWord() {
+    if (renderCacheActive && targetWordStamp === renderStamp) return targetWordCache;
+    let result;
     if (state.lockWord && state.words.indexOf(state.lockWord) >= 0) {
-      return state.lockWord;
+      result = state.lockWord;
+    } else {
+      const set = targetSet();
+      result = null;
+      if (set.length) {
+        for (const w of set) if (!w.fake) { result = w; break; }   // a fake never blocks a real word in the set
+        if (!result) result = set[0];                              // only fakes are in range
+      }
     }
-    const set = targetSet();
-    if (!set.length) return null;
-    for (const w of set) if (!w.fake) return w;   // a fake never blocks a real word in the set
-    return set[0];                                // only fakes are in range
+    if (renderCacheActive) {
+      targetWordStamp = renderStamp;
+      targetWordCache = result;
+    }
+    return result;
   }
 
   function typingOrderIndex(word, pos) {
@@ -1171,6 +1461,8 @@
     state.score += points;
     state.cleared += 1;
     state.waveCleared += 1;
+    if (word.text.length > state.longestClear) state.longestClear = word.text.length;
+    if (word.flare) state.flaresCleared += 1;
     state.lastClear = { points, x: word.x, y: word.y, auto: !!auto, t: 0.9 };
 
     if (has('ghost')) echoOf(word);
@@ -1226,7 +1518,10 @@
         state.shake = Math.max(state.shake, 0.42);
         state.clearFlash = Math.max(state.clearFlash, 0.34);
       }
-      if (state.combo % MILESTONE_COMBO === 0) milestone(state.combo);
+      // A combo milestone that lands on the tenth clear would fight the wave
+      // title card for the centre of the screen. The wave wins; the combo is
+      // still counted and its achievements still fire.
+      if (state.combo % MILESTONE_COMBO === 0 && state.waveCleared < CFG.waveSize) milestone(state.combo);
       if (word.flare) {
         // Flares are short, fast and harmless - clear one and it gets its own
         // bright cyan beat on top of the normal impact.
@@ -1239,6 +1534,8 @@
       pulseStatus('score');
       pulseStatus('combo');
     }
+
+    evaluateAchievements();
 
     const every = autoClearEvery();
     if (!auto && every > 0 && state.cleared % every === 0) autoClearNext();
@@ -1271,11 +1568,22 @@
     popup(clamp(word.x + word.w / 2, 0, W), word.y - 6, '+' + fmtInt(points), COL.accent, { size: 15, life: 0.6 });
     pulseStatus('score');
     playAutoClear();
+    evaluateAchievements();
   }
 
   function checkWaveEnd() {
     if (state.phase !== 'playing') return;
     if (state.waveCleared < CFG.waveSize) return;
+
+    // Splits and clean-wave tracking are bookkeeping, not presentation, so they
+    // also run in the headless sim (which is how the tests can read them).
+    const split = Math.max(0, state.runSec - state.waveStartSec);
+    state.waveSplits[state.wave - 1] = split;
+    if (state.waveMistakes === 0) state.cleanWaves += 1;
+    const info = state.simulating ? null : registerWaveSplit(state.wave, split);
+    announceSplit(state.wave, split, info);
+    evaluateAchievements();
+
     if (!state.endless && state.wave >= CFG.wavesPerRun) {
       openDawn();
       return;
@@ -1298,7 +1606,6 @@
     state.clearFlash = Math.max(state.clearFlash, 0.75);
     state.shake = Math.max(state.shake, 0.3);
     state.shock = Math.max(state.shock, 0.7);
-    popup(W / 2, H * 0.37, 'RECEIVER PATCHED', hsl(0.1, 0, 1), { size: 16, vy: -14, life: 1.15 });
     ring(W / 2, H * 0.42, hsl(0.12, 1, 0.64), 400, 0.72, 4);
     ring(W / 2, H * 0.42, hsl(0.52, 1, 0.68), 260, 0.52, 2);
     ring(W / 2, H * 0.42, hsl(0.85, 1, 0.66), 150, 0.34, 2);
@@ -1401,6 +1708,9 @@
     state.phase = 'playing';
     state.waveBanner = 1.6;
     state.spawnT = Math.min(state.spawnT, 0.6);
+    state.waveStartSec = state.runSec;    // the next split starts now
+    state.waveMistakes = 0;
+    evaluateAchievements();
     playWave();
   }
 
@@ -1487,6 +1797,9 @@
     state.waveCleared = 0;
     state.shields = state.shieldMax;
     state.waveBanner = 1.6;
+    state.waveStartSec = state.runSec;
+    state.waveMistakes = 0;
+    evaluateAchievements();
   }
 
   // ─── Typing rules ─────────────────────────────────────────────────────────
@@ -1533,6 +1846,7 @@
 
   function mistake() {
     state.mistakes += 1;
+    state.waveMistakes += 1;
     state.keyStreak = 0;
     if (state.shields > 0) {
       state.shields -= 1;                                // Shield eats the hit, combo kept, no flash
@@ -1659,6 +1973,7 @@
     state.keyFlash = Math.max(0, state.keyFlash - dt * 4.2);
     state.keyStreak = Math.max(0, state.keyStreak - dt * 11);
     state.shock = Math.max(0, state.shock - dt * 2.4);
+    state.splitFlashT = Math.max(0, state.splitFlashT - dt);
     state.shake = Math.max(0, state.shake - dt * 1.7);
     state.waveBanner = Math.max(0, state.waveBanner - dt);
     if (state.lastClear) {
@@ -1672,6 +1987,11 @@
     updateRings(dt);
     updatePopups(dt);
     updateStreaks(dt);
+
+    if (state.phase === 'menu') {
+      updateMenuRain(dt);
+      return;
+    }
 
     if (state.phase === 'draft') {
       state.draftAnim = Math.min(1, state.draftAnim + dt / CFG.draftRise);
@@ -1715,7 +2035,11 @@
     for (const w of state.words) {
       const fakeBoost = w.fake ? CFG.fakeSpeedMult : 1;
       const flareBoost = w.flare ? CFG.flareSpeedMult : 1;
-      const mult = (w.text.length >= 7 ? longshotBoost : 1) * fakeBoost * flareBoost;
+      // Nine- and ten-letter words get 8% more air. Playtest feedback was that
+      // long words feel like a death sentence late in a run ("the word is so
+      // long I die"); this keeps them dangerous without making the ramp unfair.
+      const lengthRelief = w.text.length >= 9 ? 0.92 : 1;
+      const mult = (w.text.length >= 7 ? longshotBoost : 1) * fakeBoost * flareBoost * lengthRelief;
       w.y += base * mult * dt;
       // Flares leave a bright sparkle trail so the player can spot one coming.
       if (!state.simulating && w.flare) {
@@ -1754,6 +2078,14 @@
     // Drives the canvas edge glow, the heartbeat and the CSS vignette.
     if (!state.simulating) {
       const t = targetWord();
+      // First time a fake becomes the lowest word, say so out loud. The rule is
+      // "every key is a mistake", but the player deserves the one-time cue.
+      if (t && t.fake && !t.decoyHinted) {
+        t.decoyHinted = true;
+        popup(clamp(t.x + t.w / 2, 60, W - 60), Math.max(24, t.y - 16), 'DECOY \u00b7 LET IT PASS', COL.fake, {
+          size: 13, vy: -18, life: 1.2,
+        });
+      }
       let danger = 0;
       if (t && !t.fake) {
         danger = clamp(1 - (state.groundY - (t.y + CFG.charH)) / 230, 0, 1);
@@ -1860,6 +2192,8 @@
     // Draw the whole scene at low resolution, then upscale it into the visible
     // canvas with smoothing. Everything - backdrop, words, hit effects - shares
     // the same soft blur, and the pixel cost is a fraction of a full-res frame.
+    renderStamp += 1;
+    renderCacheActive = true;
     ctx = sctx;
     ctx.save();
     const zoom = 1 + state.punch * 0.014 + state.keyPunch * 0.04;
@@ -1875,6 +2209,7 @@
       );
     }
     drawBackdrop();
+    if (state.phase === 'menu') drawMenuRain();
     drawEchoes();
     drawDangerLine();
     drawWords();
@@ -1907,6 +2242,7 @@
     ctx = out;
     out.drawImage(scene, 0, 0, canvas.width, canvas.height);
     syncUi();
+    renderCacheActive = false;
   }
 
   // The blurred backdrop: near-black with a handful of huge, very dim colour
@@ -1934,10 +2270,53 @@
     ctx.fillRect(0, state.groundY, W, H - state.groundY);
   }
 
+  // ── Attract mode (main screen backdrop) ───────────────────────────────────
+  function makeMenuDrop(scatter) {
+    const text = MENU_RAIN_WORDS[(Math.random() * MENU_RAIN_WORDS.length) | 0];
+    const w = charW * text.length;
+    return {
+      text,
+      x: CFG.pad + Math.random() * Math.max(40, W - CFG.pad * 2 - w),
+      y: scatter ? Math.random() * (H - CFG.groundPad) : -40 - Math.random() * 240,
+      speed: 14 + Math.random() * 28,
+      alpha: 0.16 + Math.random() * 0.18,
+      hue: (Math.random() * 0.5 + 0.42) % 1,
+      sway: Math.random() * Math.PI * 2,
+    };
+  }
+
+  function initMenuRain() {
+    state.menuRain = [];
+    for (let i = 0; i < 14; i++) state.menuRain.push(makeMenuDrop(true));
+  }
+
+  function updateMenuRain(dt) {
+    if (!state.menuRain.length) { initMenuRain(); return; }
+    for (const drop of state.menuRain) {
+      drop.y += drop.speed * dt;
+      if (drop.y > H - CFG.groundPad + 12) Object.assign(drop, makeMenuDrop(false));
+    }
+  }
+
+  function drawMenuRain() {
+    if (!state.menuRain.length) return;
+    ctx.save();
+    ctx.font = WORD_FONT;
+    ctx.textBaseline = 'top';
+    for (const drop of state.menuRain) {
+      const textW = charW * drop.text.length;
+      const x = clamp(drop.x + Math.sin(state.t * 0.5 + drop.sway) * 6, 4, Math.max(4, W - 4 - textW));
+      ctx.globalAlpha = drop.alpha;
+      ctx.fillStyle = hsl(drop.hue, 0.7, 0.6);
+      ctx.fillText(drop.text, x, drop.y);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   // Combo and danger bleed into the frame edges, so the state of the run is
   // readable from the playfield even when the HUD is out of focus.
-  function drawEdgeFx() {
-    const combo = Math.min(state.combo, 20);
+  function drawEdgeFx() {    const combo = Math.min(state.combo, 20);
     if (combo >= 3) {
       const a = 0.12 + (combo / 20) * 0.26;
       const wide = 2 + Math.round((combo / 20) * 5);
@@ -2057,8 +2436,10 @@
     ctx.font = WORD_FONT;
     ctx.textBaseline = 'top';
 
-    const ordered = state.words.slice().sort((a, b) => a.y - b.y);
-    for (const w of ordered) {
+    drawOrder.length = 0;
+    for (const w of state.words) drawOrder.push(w);
+    drawOrder.sort((a, b) => a.y - b.y);
+    for (const w of drawOrder) {
       const urgent = w.y + CFG.charH > state.groundY - 130;
       const inSet = set.indexOf(w) >= 0;
       const isTarget = w === target;
@@ -2073,9 +2454,14 @@
       if (w.harmless) color = COL.splitWord;
       if (w.flare) color = COL.flare;
       if (isTarget) {
-        color = urgent
-          ? (Math.sin(state.t * 20) > 0 ? COL.danger : COL.gold)
-          : COL.target;
+        // A Decoy fake that happens to be the lowest word is still a fake: it
+        // must never borrow the target colour, or the one moment where the
+        // "every key is a mistake" rule bites reads as a stuck real word.
+        color = w.fake
+          ? COL.fake
+          : (urgent
+            ? (Math.sin(state.t * 20) > 0 ? COL.danger : COL.gold)
+            : COL.target);
       }
 
       // ── Comet trail ──────────────────────────────────────────────────────
@@ -2211,7 +2597,7 @@
   }
 
   function drawTargetMarker(w, x, urgent) {
-    const color = urgent ? COL.danger : COL.target;
+    const color = w.fake ? COL.fake : (urgent ? COL.danger : COL.target);
     const beat = 0.5 + 0.5 * Math.sin(state.t * (urgent ? 10 : 5.5));
     const progress = w.text.length ? w.progress / w.text.length : 0;
     ctx.save();
@@ -2259,10 +2645,20 @@
     ctx.restore();
   }
 
+  // Decoy fakes are un-typeable on purpose, so they must not look like a target.
+  // A magenta word, a hard DOUBLE underline and a DECOY tag above it survive the
+  // soft-focus renderer; the old single 1-px line did not.
   function drawFakeMarker(w, x) {
     ctx.save();
     ctx.fillStyle = COL.fake;
-    for (let px = x; px < x + w.w; px += 3) ctx.fillRect(px, w.y + CFG.charH + 1, 2, 1);
+    ctx.font = 'bold 10px "Lucida Console", "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('DECOY', x + 1, w.y - 7);
+    for (let px = x; px < x + w.w; px += 3) {
+      ctx.fillRect(px, w.y + CFG.charH + 1, 2, 2);
+      ctx.fillRect(px, w.y + CFG.charH + 4, 2, 1);
+    }
     ctx.restore();
   }
 
@@ -2374,7 +2770,7 @@
     const fade = state.waveClearT < 0.2 ? state.waveClearT / 0.2 : 1;
     ctx.save();
     ctx.globalAlpha = fade;
-    ctx.translate(W / 2, H * 0.32);
+    ctx.translate(W / 2, H * 0.5);
     const s = 0.65 + 0.35 * pop;
     ctx.scale(s, s);
     ctx.textAlign = 'center';
@@ -2384,9 +2780,11 @@
     ctx.fillText('WAVE ' + state.waveClearWave + ' CLEARED', 3, 3);
     ctx.fillStyle = COL.gold;
     ctx.fillText('WAVE ' + state.waveClearWave + ' CLEARED', 0, 0);
-    ctx.font = PIXEL_FONT;
+    ctx.font = 'bold 13px "Lucida Console", "Courier New", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.fillText('+ DRAFT INCOMING', 2, 56);
     ctx.fillStyle = COL.white;
-    ctx.fillText('+ DRAFT INCOMING', 0, 34);
+    ctx.fillText('+ DRAFT INCOMING', 0, 54);
     ctx.restore();
     ctx.textAlign = 'left';
   }
@@ -2413,12 +2811,22 @@
     menuPause: $('menuPause'),
     menuPauseLabel: $('menuPauseLabel'),
     menuRecords: $('menuRecords'),
+    menuSplits: $('menuSplits'),
+    menuAchievements: $('menuAchievements'),
+    menuDifficulty: $('menuDifficulty'),
     menuMaximize: $('menuMaximize'),
     menuEffects: $('menuEffects'),
     deckField: $('deckField'),
+    mainScreen: $('mainScreen'),
+    mainMode: $('mainMode'),
+    mainModeNote: $('mainModeNote'),
+    mainBest: $('mainBest'),
+    mainFastest: $('mainFastest'),
+    mainDawns: $('mainDawns'),
+    mainAchCount: $('mainAchCount'),
+    toastStack: $('toastStack'),
     modalLayer: $('modalLayer'),
     modalBackdrop: $('modalBackdrop'),
-    welcomeBest: $('welcomeBest'),
     aboutBest: $('aboutBest'),
     status: {
       main: $('statusMain'),
@@ -2429,14 +2837,17 @@
       heat: $('statusHeat'),
       combo: $('statusCombo'),
       pressure: $('statusPressure'),
+      time: $('statusTime'),
+      mode: $('statusMode'),
     },
     dialogs: {
-      welcome: $('dlgWelcome'),
       draft: $('dlgDraft'),
       gameover: $('dlgGameover'),
       dawn: $('dlgDawn'),
       pause: $('dlgPause'),
       records: $('dlgRecords'),
+      splits: $('dlgSplits'),
+      achievements: $('dlgAchievements'),
       controls: $('dlgControls'),
       about: $('dlgAbout'),
       quit: $('dlgQuit'),
@@ -2461,6 +2872,18 @@
       dawns: $('recDawns'),
       words: $('recWords'),
       fastest: $('recFastest'),
+    },
+    splits: { body: $('splitsBody') },
+    achievements: { head: $('achHead'), list: $('achList') },
+    strip: {
+      root: $('stripHud'),
+      run: $('stripRun'),
+      runSub: $('stripRunSub'),
+      wave: $('stripWave'),
+      waveSub: $('stripWaveSub'),
+      mode: $('stripMode'),
+      best: $('stripBest'),
+      bestSub: $('stripBestSub'),
     },
   };
 
@@ -2549,8 +2972,14 @@
     uiModal = null;
   }
 
+  // Info dialogs pause the run and are dismissed with Enter/Esc or a backdrop
+  // click; phase dialogs (draft, results) are handled by the game.
+  function isInfoOverlay() {
+    return uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' ||
+      uiModal === 'records' || uiModal === 'splits' || uiModal === 'achievements';
+  }
+
   function phaseDialog() {
-    if (state.phase === 'menu') return 'welcome';
     if (state.phase === 'paused') return 'pause';
     if (state.phase === 'draft') return 'draft';
     if (state.phase === 'gameover') return 'gameover';
@@ -2573,6 +3002,8 @@
     }
     if (name === 'about') populateAbout();
     if (name === 'records') populateRecords();
+    if (name === 'splits') populateSplits();
+    if (name === 'achievements') populateAchievements();
     if (name === 'controls') ensureAudio();
     showDialog(name);
   }
@@ -2586,9 +3017,33 @@
   }
 
   // ── population ───────────────────────────────────────────────────────────
-  function populateWelcome() {
-    setText(ui.welcomeBest, `Best score: ${state.best}`);
+  // The main screen is the title/menu page shown in the 'menu' phase. It is a
+  // DOM overlay (not a modal) so Records, Splits and Achievements can open on
+  // top of it and closing them returns to it.
+  function populateMain() {
+    setText(ui.mainBest, fmtInt(records.bestScore));
+    setText(ui.mainFastest, records.fastestDawnSec ? fmtTime(records.fastestDawnSec) : '\u2014');
+    setText(ui.mainDawns, String(records.dawns));
+    setText(ui.mainAchCount, `${achievementCount()} / ${ACHIEVEMENTS.length}`);
     setText(ui.aboutBest, String(state.best));
+    updateDifficultyUi();
+  }
+
+  function returnToMenu() {
+    if (state.phase === 'menu') return;
+    hideDialogs();
+    resumePhase = null;
+    // Reset run-scoped state so the status bar cannot keep showing an abandoned
+    // run's score/time/wave under a "Ready" label. reset() also clears the
+    // board, effects, wave-clear beat, offer and deck, and reseeds the RNG.
+    reset(state.seed);
+    state.phase = 'menu';
+    state.words.length = 0;
+    state.lockWord = null;
+    state.dangerLevel = 0;
+    closeMenus();
+    ui.startMenu.classList.remove('open');
+    syncUi(true);
   }
 
   function heldCardsText() {
@@ -2674,9 +3129,10 @@
     const wave = Math.min(state.wave, CFG.wavesPerRun);
     const wordsLabel = state.cleared === 1 ? 'word' : 'words';
     const newBest = state.runStartBest > 0 && state.score > state.runStartBest;
+    const mode = (DIFFICULTIES[state.difficulty] || DIFFICULTIES.standard).name;
     const statLine =
       `${newBest ? 'NEW BEST! \u00b7 ' : ''}${wpmNow()} WPM \u00b7 ${accuracyNow()}% accuracy \u00b7 ${fmtTime(state.runSec)}` +
-      ` \u00b7 Seed ${state.seed}`;
+      ` \u00b7 Seed ${state.seed} \u00b7 ${mode} mode`;
     setText(
       parts.stats,
       kind === 'dawn'
@@ -2698,6 +3154,105 @@
     setText(ui.records.dawns, String(records.dawns));
     setText(ui.records.words, String(records.words));
     setText(ui.records.fastest, records.fastestDawnSec ? fmtTime(records.fastestDawnSec) : '-');
+  }
+
+  // ── splits ───────────────────────────────────────────────────────────────
+  function populateSplits() {
+    const body = ui.splits.body;
+    if (!body) return;
+    body.textContent = '';
+    const runSplits = state.waveSplits || [];
+    for (let i = 0; i < CFG.wavesPerRun; i++) {
+      const wave = i + 1;
+      const best = splitStore.split[i] || 0;
+      const bestCum = splitStore.cum[i] || 0;
+      const run = runSplits[i] || 0;
+      const tr = document.createElement('tr');
+      tr.className = best ? 'done' : 'todo';
+      const cells = [
+        String(wave),
+        best ? fmtSplit(best) : '\u2013',
+        bestCum ? fmtCumulative(bestCum) : '\u2013',
+        run ? fmtSplit(run) : '\u2013',
+      ];
+      for (let c = 0; c < cells.length; c++) {
+        const td = document.createElement('td');
+        td.textContent = cells[c];
+        if (c === 1 && best && run && Math.abs(run - best) < 0.001) td.className = 'pb';
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  }
+
+  // Cumulative PBs are whole-run times, so they read like the run clock.
+  function fmtCumulative(sec) {
+    return fmtTime(sec);
+  }
+
+  // ── achievements ─────────────────────────────────────────────────────────
+  function populateAchievements() {
+    if (!ui.achievements.list) return;
+    setText(ui.achievements.head, `Unlocked ${achievementCount()} / ${ACHIEVEMENTS.length}`);
+    const list = ui.achievements.list;
+    list.textContent = '';
+    for (const a of ACHIEVEMENTS) {
+      const row = document.createElement('div');
+      const unlocked = !!achieved[a.id];
+      row.className = 'ach-row ' + (unlocked ? 'unlocked' : 'locked');
+      const mark = document.createElement('div');
+      mark.className = 'ach-mark';
+      mark.textContent = unlocked ? '\u2713' : '\u00b7';
+      const text = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'ach-name';
+      name.textContent = a.name;
+      const desc = document.createElement('div');
+      desc.className = 'ach-desc';
+      desc.textContent = a.desc;
+      text.appendChild(name);
+      text.appendChild(desc);
+      if (unlocked) {
+        const when = document.createElement('div');
+        when.className = 'ach-when';
+        when.textContent = 'Unlocked ' + new Date(achieved[a.id]).toLocaleDateString();
+        text.appendChild(when);
+      }
+      row.appendChild(mark);
+      row.appendChild(text);
+      list.appendChild(row);
+    }
+  }
+
+  function updateAchievementsMenu() {
+    setText(ui.menuAchievements, `Achievements… (${achievementCount()}/${ACHIEVEMENTS.length})`);
+  }
+
+  // ── difficulty ───────────────────────────────────────────────────────────
+  function updateDifficultyUi() {
+    const selected = difficulty();
+    setText(ui.menuDifficulty, 'Difficulty: ' + selected.name);
+    setText(ui.mainModeNote, selected.desc);
+    if (ui.mainMode) {
+      ui.mainMode.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.diff === selected.id));
+      });
+    }
+    updateStatus();
+  }
+
+  function setDifficulty(id) {
+    if (!DIFFICULTIES[id]) return;
+    if (settings.difficulty === id) return;
+    settings.difficulty = id;
+    saveStore();
+    updateDifficultyUi();
+  }
+
+  function cycleDifficulty() {
+    const i = DIFFICULTY_ORDER.indexOf(settings.difficulty);
+    const next = DIFFICULTY_ORDER[(i + 1) % DIFFICULTY_ORDER.length];
+    setDifficulty(next);
   }
 
   function populatePause() {
@@ -2727,16 +3282,105 @@
     updateMenuStates();
   }
 
+  // The signal strip below the danger line is the live readout: run clock,
+  // this wave's split, and the personal bests. It is DOM (not canvas) so the
+  // numbers stay crisp above the soft-focus playfield.
+  function liveWaveSplit() {
+    if (state.phase === 'menu') return null;
+    if (state.phase === 'playing' && state.waveClearT <= 0) {
+      return Math.max(0, state.runSec - state.waveStartSec);
+    }
+    const done = state.waveSplits[state.wave - 1];
+    if (done != null) return done;
+    if (state.phase === 'dawn' || state.phase === 'gameover') return null;
+    return Math.max(0, state.runSec - state.waveStartSec);
+  }
+
+  let uiStripKey = '';
+  function populateStrip() {
+    if (!ui.strip.root) return;
+    const wave = Math.min(state.wave, CFG.wavesPerRun);
+    const live = liveWaveSplit();
+    const flash = state.splitFlashT > 0 && state.lastSplit;
+    const d = state.phase === 'menu'
+      ? difficulty()
+      : (DIFFICULTIES[state.difficulty] || DIFFICULTIES.standard);
+    // The strip is cheap to compute but expensive to touch: only write the DOM
+    // when one of the visible values actually changed (the split ticks at 10 Hz).
+    const key = [
+      Math.floor(state.runSec), wave, state.waveCleared,
+      live == null ? -1 : Math.round(live * 10),
+      flash ? 1 : 0, d.id, records.bestScore, records.fastestDawnSec,
+    ].join('|');
+    if (key === uiStripKey) return;
+    uiStripKey = key;
+
+    setText(ui.strip.run, fmtTime(state.runSec));
+    setText(ui.strip.runSub, state.phase === 'menu'
+      ? 'No run yet'
+      : `Wave ${wave} \u00b7 ${state.waveCleared}/${CFG.waveSize} cleared`);
+    setText(ui.strip.wave, live == null ? '--:--.-' : fmtSplit(live));
+
+    let sub;
+    if (flash) {
+      const ls = state.lastSplit;
+      if (ls.endless) sub = `WAVE ${ls.wave} \u00b7 ${fmtSplit(ls.split)} \u00b7 ENDLESS`;
+      else if (ls.first) sub = `WAVE ${ls.wave} CLEARED \u00b7 FIRST SPLIT`;
+      else if (ls.newSplit) sub = `WAVE ${ls.wave} CLEARED \u00b7 NEW PB`;
+      else sub = `WAVE ${ls.wave} CLEARED \u00b7 ${fmtDelta(ls.delta)} VS PB`;
+    } else {
+      const pb = splitStore.split[wave - 1] || 0;
+      const prev = state.waveSplits[wave - 2] || 0;
+      sub = (prev ? `Last ${fmtSplit(prev)} \u00b7 ` : '') + (pb ? `PB ${fmtSplit(pb)}` : 'No PB yet');
+    }
+    setText(ui.strip.waveSub, sub);
+    setClass(ui.strip.root, 'flash', !!flash);
+
+    setText(ui.strip.mode, d.name.toUpperCase());
+    setText(ui.strip.best, `BEST ${fmtInt(records.bestScore)}`);
+    setText(ui.strip.bestSub, records.fastestDawnSec
+      ? `Fastest Dawn ${fmtTime(records.fastestDawnSec)}`
+      : 'No Dawn yet');
+  }
+
+  let uiStatusKey = '';
   function updateStatus() {
+    populateStrip();                     // has its own, faster-changing cache key
+    const target = state.phase === 'playing' ? targetWord() : null;
+    // The status bar only changes on a rule event or once a second, so a single
+    // key skips the other ~50 frames' worth of DOM writes entirely.
+    const statusKey = [
+      state.phase, state.endless ? 1 : 0, state.wave, state.waveCleared,
+      state.lives, state.shields, state.shieldMax, state.heat, pressure(),
+      Math.floor(state.runSec), state.score, state.combo, state.difficulty,
+      target && target.fake ? 1 : 0, reversed() ? 1 : 0, tunnelVisible() > 0 ? 1 : 0,
+    ].join('|');
+    if (statusKey === uiStatusKey) return;
+    uiStatusKey = statusKey;
+
+    // State flags that explain why a word is not accepting keys: a fake target,
+    // Reverse, Tunnel. They sit in the wide status panel next to the combo.
+    let playingText = 'Playing';
+    if (state.phase === 'playing') {
+      if (reversed()) playingText += ' \u00b7 REVERSE';
+      if (tunnelVisible() > 0) playingText += ' \u00b7 TUNNEL';
+      if (target && target.fake) playingText += ' \u00b7 DECOY - WAIT';
+      if (state.combo > 0) playingText += ` \u00b7 combo x${comboMultiplier().toFixed(2)}`;
+    }
     const phaseText = {
       menu: 'Ready',
-      playing: 'Playing' + (state.combo > 0 ? ` · combo x${comboMultiplier().toFixed(2)}` : ''),
+      playing: playingText,
       paused: 'Paused',
       draft: 'Draft - choose a card',
       dawn: 'Dawn - run won',
       gameover: 'Signal lost',
     }[state.phase] || 'Ready';
     setText(ui.status.main, phaseText);
+    setText(ui.status.time, `Time: ${fmtTime(state.runSec)}`);
+    const mode = state.phase === 'menu'
+      ? difficulty().name
+      : (DIFFICULTIES[state.difficulty] || DIFFICULTIES.standard).name;
+    setText(ui.status.mode, `Mode: ${mode}`);
     setText(ui.status.score, `Score: ${fmtInt(state.score)}`);
     setText(ui.status.combo, `Combo: ${comboMultiplier().toFixed(2)}\u00d7`);
     setText(
@@ -2751,7 +3395,9 @@
 
   function updateTitle() {
     let label = 'Untitled';
-    if (state.phase === 'paused') {
+    if (state.phase === 'menu') {
+      label = 'Main Menu';
+    } else if (state.phase === 'paused') {
       label = 'Paused';
     } else if (state.phase === 'playing') {
       label = `Wave ${Math.min(state.wave, CFG.wavesPerRun)}` + (state.endless ? ' (endless)' : '');
@@ -2772,9 +3418,9 @@
     if (state.phase === 'paused') populatePause();
     if (state.phase === 'gameover') populateResult('gameover');
     if (state.phase === 'dawn') populateResult('dawn');
-    if (state.phase === 'menu') populateWelcome();
+    if (state.phase === 'menu') populateMain();
     updateMenuStates();
-    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') return;
+    if (isInfoOverlay()) return;
     syncToPhase();
   }
 
@@ -2910,6 +3556,8 @@
     ui.startMenu.classList.remove('open');
     switch (cmd) {
       case 'new': startNewRun(); break;
+      case 'menu': returnToMenu(); break;
+      case 'quit': onClose(); break;
       case 'exit': onClose(); break;
       case 'restore': setAppOpen(true); restoreApp(); break;
       case 'reroll':
@@ -2925,6 +3573,9 @@
         else if (state.phase === 'paused') resumeGame();
         break;
       case 'records': openOverlay('records'); break;
+      case 'splits': openOverlay('splits'); break;
+      case 'achievements': openOverlay('achievements'); break;
+      case 'difficulty': cycleDifficulty(); break;
       case 'maximize': toggleMaximize(); break;
       case 'controls': openOverlay('controls'); break;
       case 'about': openOverlay('about'); break;
@@ -3056,11 +3707,41 @@
     });
 
     // dialogs
-    click('welcomeStart', startNewRun);
-    click('welcomeControls', () => openOverlay('controls'));
+    click('menuStart', startNewRun);
     click('controlsOk', closeOverlay);
     click('aboutOk', closeOverlay);
     click('recordsOk', closeOverlay);
+    click('splitsOk', closeOverlay);
+    click('achOk', closeOverlay);
+    // Records -> Splits keeps the same paused state; only the dialog swaps.
+    click('recordsSplits', () => {
+      populateSplits();
+      showDialog('splits');
+    });
+    if (ui.mainMode) {
+      ui.mainMode.querySelectorAll('.mode-btn').forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (btn.blur) btn.blur();
+          ensureAudio();
+          setDifficulty(btn.dataset.diff);
+        });
+      });
+    }
+    // Main-screen destinations reuse the menu commands, so they behave exactly
+    // like the File / Game / Help menu entries.
+    document.querySelectorAll('.main-item[data-cmd]').forEach((item) => {
+      item.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (item.blur) item.blur();
+        ensureAudio();
+        runCommand(item.dataset.cmd);
+      });
+    });
+    click('overMenu', returnToMenu);
+    click('pauseMenu', returnToMenu);
     click('quitNo', closeOverlay);
     click('quitYes', quitConfirmed);
     click('overRetry', () => startNewRun());
@@ -3075,7 +3756,7 @@
     });
     click('dawnNew', startNewRun);
     ui.modalBackdrop.addEventListener('click', () => {
-      if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') closeOverlay();
+      if (isInfoOverlay()) closeOverlay();
     });
     ui.draft.reroll.addEventListener('click', () => {
       ensureAudio();
@@ -3098,6 +3779,8 @@
 
     updateClock();
     setInterval(updateClock, 15000);
+    updateDifficultyUi();
+    updateAchievementsMenu();
     updateMenuStates();
     syncUi(true);
   }
@@ -3268,6 +3951,10 @@
     const notes = [523, 659, 784, 1046];
     notes.forEach((n, i) => tone(n, 0.22, 'sine', 0.04, 0, i * 0.12));
   }
+  // Achievement: a short bright arpeggio that does not cover the clear chord.
+  function playAchievement() {
+    [784, 988, 1175, 1568].forEach((n, i) => tone(n, 0.14, 'triangle', 0.024, 0, i * 0.075));
+  }
 
   // ─── Loop ─────────────────────────────────────────────────────────────────
   function frame(now) {
@@ -3314,7 +4001,7 @@
     ensureAudio();
 
     // A user-opened dialog (Controls / About / Records / Quit) captures Enter and Esc.
-    if (uiModal === 'controls' || uiModal === 'about' || uiModal === 'quit' || uiModal === 'records') {
+    if (isInfoOverlay()) {
       if (event.key === 'Escape' || event.key === 'Enter') {
         event.preventDefault();
         closeOverlay();
@@ -3492,15 +4179,48 @@
   }
 
   // ─── Debug / test hook ────────────────────────────────────────────────────
+  // Synchronous CPU benchmark used by tools/qa-v15.mjs: runs update+render for a
+  // fixed number of frames with a full board, so the number is independent of
+  // the browser's vsync and the host's background load.
+  function benchScene(frames) {
+    frames = Math.max(1, Math.min(1200, Math.floor(Number(frames) || 180)));
+    reset(4242);
+    state.lives = 99;
+    for (let i = 0; i < 8; i++) spawn();
+    state.spawnT = 9999;
+    state.flareT = 9999;
+    const t0 = performance.now();
+    for (let i = 0; i < frames; i++) {
+      update(1 / 60);
+      render();
+    }
+    const total = performance.now() - t0;
+    return {
+      frames,
+      totalMs: Number(total.toFixed(1)),
+      perFrameMs: Number((total / frames).toFixed(2)),
+      words: state.words.length,
+    };
+  }
+
   window.__wordfall = {
-    version: 'M7',
+    version: 'M8',
     state,
     CFG,
     CARDS: CARD_LIST,
     records,
     settings,
+    ACHIEVEMENTS,
+    achieved,
+    splits: splitStore,
+    difficulty,
+    setDifficulty,
+    cycleDifficulty,
+    evaluateAchievements,
+    fmtSplit,
     reset,
     newRun: reset,
+    returnToMenu,
     pause: pauseGame,
     resume: resumeGame,
     stats: () => ({
@@ -3550,12 +4270,14 @@
     speedMult,
     scoreMult,
     spawnInterval,
+    baseSpeedNow,
     rerollsLeft: () => state.rerollsLeft,
     nextChar,
     visibleCount,
     wordRange,
     bucketPressure,
     isFake: (w) => !!(w && w.fake),
+    benchScene,
     sim,
     rng,
   };

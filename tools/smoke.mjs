@@ -8,7 +8,7 @@
  *
  * Run from the wordfall/ folder:
  *   node tools/smoke.mjs
- *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M7" window
+ *   node tools/smoke.mjs --wait-sec 60     # shorten the "wait for M8" window
  *
  * Prints a JSON summary on stdout; progress goes to stderr. Screenshots land in
  * shots/. Exits 0 only if every check passes and the page logged no errors.
@@ -68,7 +68,7 @@ function parseArgs(argv) {
         process.exit(2);
       }
     } else if (arg === '-h' || arg === '--help') {
-      console.log('Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === \'M7\' (default 900).');
+      console.log("Usage: node tools/smoke.mjs [--wait-sec N]\n\nWaits up to N seconds for game.js window.__wordfall.version === 'M8' (default 900).");
       process.exit(0);
     } else {
       console.error(`smoke: unknown argument: ${arg}`);
@@ -96,7 +96,7 @@ async function waitForM7() {
     } catch (err) {
       last = `load failed: ${firstLine(err)}`;
     }
-    if (version === 'M7') {
+    if (version === 'M8') {
       page = candidate;
       return;
     }
@@ -104,7 +104,7 @@ async function waitForM7() {
     else if (pageErrors.length) last = `no hook; pageerror: ${pageErrors[0]}`;
     await context.close().catch(() => {});
     if (Date.now() >= deadline) {
-      throw new Error(`game.js never exposed window.__wordfall.version === 'M7' within ${opts.waitSec}s (last: ${last})`);
+      throw new Error(`game.js never exposed window.__wordfall.version === 'M8' within ${opts.waitSec}s (last: ${last})`);
     }
     log(`game not ready (${last}); retrying in ${RETRY_WAIT_MS / 1000}s`);
     await sleep(RETRY_WAIT_MS);
@@ -269,11 +269,11 @@ async function domInfo() {
   });
 }
 
-/** Reload the page in the same context (localStorage survives) and wait for M7 again. */
+/** Reload the page in the same context (localStorage survives) and wait for M8 again. */
 async function reloadGame() {
   await page.reload({ waitUntil: 'load', timeout: 20000 });
   await page.waitForFunction(
-    () => window.__wordfall && window.__wordfall.version === 'M7',
+    () => window.__wordfall && window.__wordfall.version === 'M8',
     null,
     { timeout: 20000 }
   );
@@ -457,15 +457,15 @@ let summary = null;
 try {
   log('launching headless Chrome (channel=chrome)…');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  log(`waiting for ${INDEX_URL} to expose version M7…`);
+  log(`waiting for ${INDEX_URL} to expose version M8…`);
   await waitForM7();
-  log('game.js M7 is live — running checks');
+  log('game.js M8 is live — running checks');
 
   page.on('pageerror', (e) => errors.push('pageerror: ' + String(e)));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
   const version = await wf(() => window.__wordfall.version);
-  check('contract: window.__wordfall.version === M7', version === 'M7', version, "'M7'");
+  check('contract: window.__wordfall.version === M8', version === 'M8', version, "'M8'");
 
   // ═══ M1: core loop ═════════════════════════════════════════════════════
   await section('M1 core loop', async () => {
@@ -1991,7 +1991,7 @@ try {
         records: Object.assign({}, w.records),
         best: w.state.best,
         stored: JSON.parse(localStorage.getItem('wordfall.records') || 'null'),
-        welcomeBest: String((document.getElementById('welcomeBest') || {}).textContent || '').trim(),
+        welcomeBest: String((document.getElementById('mainBest') || {}).textContent || '').trim(),
         menuRecords: !!document.getElementById('menuRecords'),
       };
     });
@@ -2005,8 +2005,8 @@ try {
       'baseline loaded, state.best 100'
     );
     check(
-      'M6 records: the welcome dialog shows the record best score',
-      loaded.welcomeBest === 'Best score: 100' && loaded.menuRecords,
+      'M6 records: the main screen shows the record best score',
+      loaded.welcomeBest === '100' && loaded.menuRecords,
       { welcomeBest: loaded.welcomeBest, menuRecords: loaded.menuRecords },
       '"Best score: 100", #menuRecords exists'
     );
@@ -2708,7 +2708,7 @@ try {
     check(
       'M7 FX toggle: the light setting survives a page reload',
       persisted.quality === 'light' && persisted.fxLight && persisted.menu === 'Effects: Light' &&
-      persisted.stored && persisted.stored.fx === 'light' && persisted.version === 'M7',
+      persisted.stored && persisted.stored.fx === 'light' && persisted.version === 'M8',
       persisted,
       'boots into light FX from localStorage'
     );
@@ -2732,7 +2732,7 @@ try {
 
   await section('M7 FX overlay + dialogs', async () => {
     await wf(() => {
-      const el = document.getElementById('welcomeStart');
+      const el = document.getElementById('menuStart');
       if (el) el.click();
     });
     await sleep(200);
@@ -2933,7 +2933,7 @@ try {
 const passed = checks.filter((c) => c.pass).length;
 summary = {
   pass: checks.every((c) => c.pass),
-  version: 'M7',
+  version: 'M8',
   checks,
   failed: checks.filter((c) => !c.pass).map((c) => c.name),
   consoleErrors: errors,

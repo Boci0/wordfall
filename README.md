@@ -31,7 +31,7 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 &nbsp;&nbsp;&nbsp;
 <img src="shots/10-fx-clear.png" alt="Cleared words shattering into glyphs with shockwave rings and floating score call-outs" width="31%">
 &nbsp;&nbsp;&nbsp;
-<img src="shots/09-records.png" alt="The Records dialog listing best score, best wave, best combo, runs played and fastest Dawn" width="31%">
+<img src="shots/01-menu.png" alt="The Wordfall main screen: title, Start Run, difficulty selection, Records/Splits/Achievements shortcuts and machine bests" width="31%">
 
 </div>
 
@@ -87,8 +87,33 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 <tr>
 <td width="50%" valign="top">
 
+### Chase the clock
+
+- A live run clock in the status bar and signal strip, frozen by pauses and drafts
+- Every wave is timed; the signal strip shows the live split and its PB
+- **Game → Splits…** lists best split and cumulative time for all twelve waves
+- Fifteen achievements, from a flawless wave to a sub-five-minute Dawn
+
+</td>
+<td width="50%" valign="top">
+
+### Pick your frequency
+
+- **Casual**, **Standard** and **Nightmare** modes, chosen on the main screen or
+  **Game → Difficulty**
+- Casual starts with two lives and slows the board; Nightmare speeds it up and keeps one life
+- The mode is remembered and named on the result screen
+- Records and achievements are shared, so the score stays comparable
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
 ### Windows 95, for real
 
+- A full Win95 **main screen**: wordmark, Start Run, difficulty, stats and shortcuts, with
+  attract-mode words drifting behind it
 - 16-colour palette, bevelled chrome, Tahoma, and working menus, dialogs, toolbar, taskbar and Start menu
 - Browser: the full fake desktop around the window. Native: just the borderless app window
 - **View → Effects** switches Full and Light; `prefers-reduced-motion` is respected
@@ -100,7 +125,7 @@ Read. Commit. Survive. Windows and the browser. No account, no ads, no telemetry
 ### Stays on your machine
 
 - No account, no ads, no telemetry, and it works offline
-- Records and settings live in `localStorage` on this machine
+- Records, splits, achievements and settings live in `localStorage` on this machine
 - The updater talks only to GitHub's release API, and only when it checks
 - The native app checks for updates at launch and from **Help → Check for Updates…**
 
@@ -141,14 +166,24 @@ You are the night operator at **Relay 12**, the city's last long-wave station. W
 falling out of the dead channel, and you have until Dawn to hold the line.
 **Read. Commit. Survive.**
 
+- **The main screen is the title card.** Start a run, pick Casual / Standard / Nightmare,
+  or open Records, Splits, Achievements, Controls and About without leaving the window.
+  **File → Main Menu** and the pause / game-over dialogs always bring it back.
 - **Only the lowest word is live.** Everything else is inert until it becomes the target.
   Your first correct letter locks on, so you commit to a word the moment you begin it.
 - **Ten clears make a wave.** The board freezes and a draft opens: slot 1 is a Boon, slot 2
   anything, slot 3 a Hex or Gambit. Pick one, reroll once, or skip.
 - **Pressure never stops climbing.** It is `cleared + 4 × drafts taken`, and it sets word
   length, spawn rate and fall speed - so skipping does not dodge the difficulty.
+- **Long words get a little more air.** Nine- and ten-letter words fall 8% slower, so the
+  longest bands are tense rather than a death sentence; **Casual** slows the whole board.
 - **One Life, and Dawn at wave 12.** Shields absorb wrong keys, Lifeline absorbs a hit, and
   after Dawn the run continues in endless, score-only mode.
+- **The clock never stops when the board does.** Pauses and drafts freeze the run clock, but
+  every wave is timed; the best split for each wave is kept in **Game → Splits…**.
+- **Fifteen achievements** track the run, from the first clear to a sub-five-minute
+  Nightmare Dawn; they unlock with a notification and live in **Game → Achievements…**.
+- **Choose Casual, Standard or Nightmare** on the main screen or from **Game → Difficulty**.
 - **A keyboard is required.** The browser build and the native app play identically.
 
 ### Controls
@@ -162,10 +197,12 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 | R | draft: reroll the offer (once per run) |
 | S | draft: skip (`+150 × wave` points, +1 Shield next wave, still raises Pressure) |
 | F2 | new run |
+| Game menu | Difficulty, Splits…, Achievements… and Records… |
 
-Everything in the window is clickable: the File / Game / View / Help menus, the toolbar,
-desktop icon, taskbar button and title-bar buttons all work. The Game menu carries
-Pause/Resume and Records…; the game-over dialog carries Retry, Retry Seed and Quit.
+Everything in the window is clickable: the main screen, File / Game / View / Help menus, the
+toolbar, desktop icon, taskbar button and title-bar buttons all work. The main screen and the
+Game menu carry Difficulty, Splits…, Achievements… and Records…; the game-over dialog carries
+Retry, Retry Seed, Main Menu and Quit, and the pause dialog has Main Menu too.
 
 <details>
 <summary><b>The 18-card deck</b></summary>
@@ -232,10 +269,11 @@ time, so rebuild after changing the game. `install.ps1` copies the build into
 
 ```bash
 node tools/smoke.mjs            # Playwright UI, rules, effects and frame-time checks
+node tools/qa-v15.mjs           # main screen, clock, splits, achievements, difficulty, decoy, CPU budget
 node tools/bot.mjs --seeds 100  # headless WPM bot against the SPEC balance targets
 ```
 
-Both drive headless Chrome through `playwright-core`. The debug hook, the updater
+All drive headless Chrome through `playwright-core`. The debug hook, the updater
 diagnostics and the balance lab are documented in the
 [technical notes](TECHNICAL.md#tests).
 
@@ -247,9 +285,10 @@ diagnostics and the balance lab are documented in the
 | :--- | :--- |
 | [SPEC.md](SPEC.md) | The design doc: rules, cards, milestones and tuning targets |
 | [TECHNICAL.md](TECHNICAL.md) | Renderer, presentation, native shell, updater, test harnesses and tuning |
-| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.4.1 |
+| [CHANGELOG.md](CHANGELOG.md) | Every release, from v1.0 to v1.5.0 |
 | [BALANCE-LAB.md](BALANCE-LAB.md) | Measured card power, draft-offer distribution and tuning recommendations |
 | [QA-REPORT.md](QA-REPORT.md) · [QA-REPORT-M6.md](QA-REPORT-M6.md) · [QA-REPORT-M7.md](QA-REPORT-M7.md) · [QA-JUICE.md](QA-JUICE.md) | Independent acceptance reviews for each milestone |
+| [QA-REPORT-V15.md](QA-REPORT-V15.md) · [QA-DECOY.md](QA-DECOY.md) | v1.5 verification, and the decoy / "long words don't die" investigation |
 | [win/README.md](win/README.md) | The native Windows shell in detail |
 
 ## Feedback
@@ -260,5 +299,5 @@ Include the version from **Help → About**, and the seed if the bug is specific
 <br>
 
 <div align="center">
-<sub>Wordfall 1.4.1 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
+<sub>Wordfall 1.5.0 &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp; Built with JavaScript, WinForms and WebView2 &nbsp;·&nbsp; © 2026 Boci0</sub>
 </div>

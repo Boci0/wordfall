@@ -583,3 +583,146 @@ verifies the digest, extracts 9 files including `Wordfall.exe`, and cleans up; t
 helper swapped a scratch target (old files replaced, staging removed, log written) and the
 copied exe passed `--selftest`. The native `--smoke` run still passes on the v1.3 shell, and
 the browser smoke/bot suites are unaffected (the web game did not change).
+
+## 14. Implementation notes (v1.5 - clock, splits, achievements, difficulty)
+
+The v1.5 slice is a score-attack pass: it adds measurement and goals around the existing
+rules without changing the rules themselves. The card pool, Pressure formula, scoring
+multipliers, wave size and Dawn target are untouched.
+
+### 14.1 Run clock and wave splits
+
+- `state.runSec` advances only while `phase === 'playing'` and the wave-clear beat is not
+  running. Pauses, dialogs, drafts, the Dawn screen and the wave-clear beat do not count.
+  This was already true for the M6 result stats; v1.5 surfaces the same clock live.
+- A **wave split** is `runSec` at the tenth clear minus `runSec` when the wave started. The
+  start stamp (`state.waveStartSec`) is written by `reset()`, `advanceWave()` and
+  `continueEndless()`.
+- Every completed wave writes its split into `state.waveSplits` (per run) and compares it
+  with the machine PB for that wave index. `wordfall.splits` stores two 12-entry arrays:
+  `split[i]` = fastest completed wave i+1, `cum[i]` = fastest cumulative run time at the
+  end of wave i+1. Only waves 1-12 are stored; endless waves are timed for the strip but
+  are not PBs. Headless sims skip persistence, so tuning runs do not touch the record book.
+- The **signal strip** (the 96/800-tall band below the danger line) is a DOM overlay, not
+  canvas: the playfield renderer is soft-focus, but the readout must be crisp. It shows the
+  run clock and wave progress, the live this-wave split with the previous split and the
+  wave PB, and the mode with best score / fastest Dawn.
+- On completion the strip's centre readout flashes gold for 2.2 s with `FIRST SPLIT`,
+  `NEW PB` or the delta against the PB. The old centre-screen split popups were removed
+  because they landed on the wave-clear title card; the title card itself is centred at
+  50% of the playfield, the duplicate `RECEIVER PATCHED` callout is gone, and a combo
+  milestone that would land on the tenth clear is suppressed so only one celebration owns
+  the screen.
+
+### 14.2 Achievements
+
+- Fifteen global achievements (ids in `ACHIEVEMENTS`): first clear; 10 and 25 combo;
+  waves 5 and 12; Dawn; 10k and 50k score; 100 words; a flawless wave; a ten-letter word;
+  a flare catch; a sub-five-minute Dawn; a Nightmare Dawn; wave 15 in endless.
+- `evaluateAchievements()` runs after every scoring event, wave end, difficulty change and
+  run end. It is a no-op while `state.simulating`, so the headless bot and balance sweeps
+  never unlock anything. Unlocks are idempotent and persisted to
+  `wordfall.achievements` (`{id: unix_ms}`).
+- Unlocks raise a Win95 notification window (max three stacked) above the modal layer and
+  the signal strip. The Achievements dialog lists every entry with its unlock date; the
+  Game menu shows `Achievements… (n/15)`.
+- Achievements are shared across difficulties; three of them specifically require a mode.
+
+### 14.3 Difficulty
+
+| Mode | Lives | Fall speed | Spawn interval | Design |
+| --- | --- | --- | --- | --- |
+| Casual | 2 | x0.85 | x1.15 | Learning curve; the only mode with a spare life |
+| Standard | 1 | x1.00 | x1.00 | The M1-M7 balance the bots are tuned against |
+| Nightmare | 1 | x1.15 | x0.90 | Speed and spawn pressure, no extra lives |
+
+- `DIFFICULTIES` is the single source of truth; `baseSpeedNow()` and `spawnInterval()`
+  multiply by the active mode. The multipliers are applied after the Pressure curve and
+  the card multipliers, so cards keep their relative value in every mode.
+- The mode is chosen on the main screen or cycled with Game -> Difficulty, is persisted
+  in `wordfall.settings.difficulty`, and is copied to `state.difficulty` at run start so a
+  mid-run menu change only affects the next run. The result screen names the mode.
+- There is deliberately **no difficulty score multiplier**: records and achievements are
+  shared, so the displayed score stays comparable. A harder mode is its own reward.
+
+### 14.4 Decoy clarity
+
+A playtest review turned up a Decoy fake that was effectively invisible while it was the
+target. The rule was working as designed: a fake is un-typeable while it is the lowest word,
+but the `isTarget` colour branch overrode the fake's magenta colour, so in exactly that
+state it looked like a normal target (only a 1-px underline remained). The fix is
+presentation-only:
+
+- fakes keep `COL.fake` even when they are the target, and the target box uses the fake
+  colour;
+- `drawFakeMarker` now prints a hard `DECOY` tag above the word plus a double dashed
+  underline, both above the soft-focus blur;
+- a one-time `DECOY - LET IT PASS` cue fires when a fake becomes the lowest word, and the
+  status panel appends `DECOY - WAIT`;
+- the status panel also names `REVERSE` and `TUNNEL` while those hexes are held, so any
+  word that refuses keys has a visible reason.
+
+The "every key is a mistake" rule is unchanged. Note: the original one-line feedback that
+started this review ("ada yang word panjang tak mati") turned out to be hyperbole about
+long words being lethal, not a stuck word - see 14.7 for the pacing response. Both changes
+stand on their own.
+
+### 14.5 Main screen
+
+The `menu` phase used to show a small Welcome dialog over the playfield. v1.5 replaces it
+with a full main screen (`#mainScreen`), a DOM overlay inside `.client`:
+
+- wordmark and icon, the one-line premise, and a `Start Run` primary action;
+- the three difficulty buttons (shared `.mode-btn` component with the Game menu) plus a
+  one-line description of the selected mode;
+- six destinations: Records, Splits, Achievements (with `n / 15`), Controls, About, Quit;
+- a live stats panel: best score, fastest Dawn, Dawns, all read from the same `records`
+  object the Records dialog uses;
+- an attract-mode rain of 14 relay-flavoured words drifting over the soft-focus field. It
+  is presentation only, fed by `Math.random`, and never touches the seeded gameplay RNG.
+
+It is not a dialog: it is shown by `body.phase-menu` and hidden by CSS, so opening
+Records/Splits/Achievements on top of it pauses nothing and closing the dialog returns to
+the main screen. `File -> Main Menu`, the pause dialog's Main Menu button and the game-over
+dialog's Main Menu button call `returnToMenu()`, which abandons the run, clears the board
+and effects, and re-syncs the UI. The title bar reads `Wordfall - Main Menu` in this phase.
+
+### 14.6 Performance pass
+
+The v1.5 additions do not change the renderer's cost profile meaningfully, but the extra
+per-frame reads were removed before release:
+
+- `targetSet()` / `targetWord()` are frame-scoped cached. The cache is only active while
+  `render()` runs, so input events that fire between frames always recompute from live
+  state. This turns 3-4 sorts per rendered frame into one; `drawWords`, the status flags and
+  the danger glow all read the same result.
+- `drawWords` reuses one module-level `drawOrder` array instead of `state.words.slice()`
+  every frame.
+- `updateStatus()` computes a single key over everything the status bar displays and returns
+  early when none of it changed; only the signal strip keeps updating at its own 10 Hz.
+- `window.__wordfall.benchScene(frames)` runs `update(1/60)` + `render()` synchronously for
+  a fixed number of frames with a full board, so CPU cost can be measured independently of
+  browser vsync. Measured on this machine: ~0.4 ms/frame of CPU with six falling words.
+
+### 14.7 Long-word pacing
+
+The playtest line that read like "some long words don't die" was hyperbole - the player
+meant "the word is so long, I die". The length ramp itself is unchanged (it is the source
+of late-run tension), but nine- and ten-letter words now fall at **92%** of their normal
+speed (`lengthRelief` in `update()`). This gives the two longest bands roughly 8% more
+reaction and typing time without touching spawn rate, word range, scoring or the bot's
+7+ letter Longshot speed rule (which uses 7-letter words and is unaffected).
+
+Measured effect on the 100/400-seed bot: 60 WPM random Dawn rate moves from 35% to 42% at
+100 seeds and to 39.5% at 400 seeds, still inside the SPEC's 30-50% acceptance cell; the
+60 WPM no-draft median death wave stays at 7. Casual remains the gentler option for the
+same complaint.
+
+### 14.8 Persistence summary
+
+| Key | Contents |
+| --- | --- |
+| `wordfall.records` | lifetime score/wave/combo/runs/Dawns/words/fastest Dawn |
+| `wordfall.splits` | `{split: [12], cum: [12]}` machine PBs |
+| `wordfall.achievements` | `{achievement_id: unix_ms}` |
+| `wordfall.settings` | `{muted, fx, difficulty}` |

@@ -64,6 +64,7 @@
           <span class="menu-label"><u>F</u>ile</span>
           <div class="dropdown">
             <div class="drop-item" data-cmd="new">New Run<span class="shortcut">F2</span></div>
+            <div class="drop-item" data-cmd="menu">Main Menu</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="exit">Exit Wordfall</div>
           </div>
@@ -77,6 +78,9 @@
             <div class="drop-item" data-cmd="skip" id="menuSkip">Skip Draft<span class="shortcut">S</span></div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="records" id="menuRecords">Records…</div>
+            <div class="drop-item" data-cmd="splits" id="menuSplits">Splits…</div>
+            <div class="drop-item" data-cmd="achievements" id="menuAchievements">Achievements…</div>
+            <div class="drop-item" data-cmd="difficulty" id="menuDifficulty">Difficulty: Standard</div>
             <div class="drop-sep"></div>
             <div class="drop-item" data-cmd="new">Restart Run<span class="shortcut">F2</span></div>
           </div>
@@ -136,32 +140,95 @@
 
         <div class="fx-overlay" id="fxOverlay" aria-hidden="true"><div class="fx-glow" id="fxGlow"></div><div class="fx-vignette"></div><div class="fx-scanlines"></div><div class="fx-noise"></div></div>
 
-        <div class="modal-layer" id="modalLayer">
-          <div class="modal-backdrop" id="modalBackdrop"></div>
+        <!-- Signal strip: the dead band below the danger line is the readout. -->
+        <div class="strip-hud" id="stripHud" aria-hidden="true">
+          <div class="strip-cell">
+            <div class="strip-label">RUN</div>
+            <div class="strip-value" id="stripRun">00:00</div>
+            <div class="strip-sub" id="stripRunSub">Wave 1 · 0/10 cleared</div>
+          </div>
+          <div class="strip-cell strip-center">
+            <div class="strip-label">THIS WAVE</div>
+            <div class="strip-value strip-gold" id="stripWave">00:00.0</div>
+            <div class="strip-sub" id="stripWaveSub">No split yet</div>
+          </div>
+          <div class="strip-cell strip-right">
+            <div class="strip-label" id="stripMode">STANDARD</div>
+            <div class="strip-value" id="stripBest">BEST 0</div>
+            <div class="strip-sub" id="stripBestSub">Fastest Dawn —</div>
+          </div>
+        </div>
 
-          <!-- Welcome -->
-          <div class="dialog dlg-welcome" id="dlgWelcome">
-            <div class="dialog-title"><span>Wordfall for Windows</span></div>
-            <div class="dialog-body welcome-body">
-              <svg class="welcome-icon" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
-                <rect x="2" y="4" width="28" height="24" fill="#c0c0c0" stroke="#000"/>
-                <rect x="3" y="5" width="26" height="6" fill="#000080"/>
-                <rect x="4" y="12" width="24" height="14" fill="#008080"/>
-                <rect x="6" y="14" width="9" height="2" fill="#ffff00"/>
-                <rect x="12" y="18" width="12" height="2" fill="#ffffff"/>
-              </svg>
-              <div class="welcome-text">
-                <div class="welcome-head">Relay 12 · 03:00</div>
-                <p>The city's last long-wave station is still on the air. Words are falling out of the dead channel.</p>
-                <p>Type only the word closest to the ground. Clear 10 to patch the receiver; survive 12 waves to reach Dawn.</p>
-                <p class="welcome-best" id="welcomeBest">Best score: 0</p>
+        <!-- Main screen: title, start, mode and the meta-game destinations. -->
+        <div class="main-screen" id="mainScreen">
+          <div class="main-panel">
+            <div class="main-titlebar">
+              <span>Wordfall 95 · Relay 12</span>
+              <span class="main-version" id="mainVersion">v1.5.0</span>
+            </div>
+            <div class="main-body">
+              <div class="main-hero">
+                <div class="main-brand">
+                  <svg class="main-icon" viewBox="0 0 32 32" shape-rendering="crispEdges" aria-hidden="true">
+                    <rect x="1" y="3" width="30" height="26" fill="#c0c0c0" stroke="#000"/>
+                    <rect x="2" y="4" width="28" height="24" fill="#c0c0c0"/>
+                    <rect x="2" y="4" width="28" height="6" fill="#000080"/>
+                    <rect x="3" y="11" width="26" height="16" fill="#008080"/>
+                    <rect x="5" y="13" width="9" height="2" fill="#ffff00"/>
+                    <rect x="5" y="17" width="20" height="2" fill="#000000"/>
+                    <rect x="5" y="20" width="16" height="2" fill="#ffffff"/>
+                    <rect x="5" y="23" width="11" height="2" fill="#808080"/>
+                  </svg>
+                  <div>
+                    <div class="main-wordmark">WORD<span>FALL</span></div>
+                    <div class="main-tagline">READ &middot; COMMIT &middot; SURVIVE</div>
+                  </div>
+                </div>
+                <p class="main-blurb">The city&rsquo;s last long-wave station is still on the air. Words are falling
+                  out of the dead channel. Type only the word closest to the ground; clear ten to patch the
+                  receiver and hold the line until Dawn.</p>
+
+                <div class="main-difficulty">
+                  <span class="main-label">DIFFICULTY</span>
+                  <div class="mode-row" id="mainMode">
+                    <button type="button" tabindex="-1" class="mode-btn" data-diff="casual" title="Two lives, slower words, slower spawns">Casual</button>
+                    <button type="button" tabindex="-1" class="mode-btn" data-diff="standard" title="One life, the balance the game is tuned around">Standard</button>
+                    <button type="button" tabindex="-1" class="mode-btn" data-diff="nightmare" title="One life, faster words, tighter spawns. No score bonus - just the run">Nightmare</button>
+                  </div>
+                  <p class="main-mode-note" id="mainModeNote">One life &middot; the balance the game is tuned around</p>
+                </div>
+
+                <button type="button" tabindex="-1" class="main-start" id="menuStart">
+                  <span class="main-start-label">Start Run</span>
+                  <span class="main-start-key">ENTER</span>
+                </button>
+                <p class="main-hint">Press <b>Enter</b> to start &middot; <b>F2</b> restarts a run &middot; <b>Esc</b> pauses</p>
+              </div>
+
+              <div class="main-menu">
+                <button type="button" tabindex="-1" class="main-item" data-cmd="records"><span class="main-item-label">Records&hellip;</span><span class="main-item-note">lifetime bests</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="splits"><span class="main-item-label">Splits&hellip;</span><span class="main-item-note">wave PBs</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="achievements"><span class="main-item-label">Achievements&hellip;</span><span class="main-item-note" id="mainAchCount">0 / 15</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="controls"><span class="main-item-label">Controls&hellip;</span><span class="main-item-note">how to play</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="about"><span class="main-item-label">About&hellip;</span><span class="main-item-note">credits</span></button>
+                <button type="button" tabindex="-1" class="main-item" data-cmd="quit"><span class="main-item-label">Quit</span><span class="main-item-note">close Wordfall</span></button>
+
+                <div class="main-stats">
+                  <div class="main-stat"><span>BEST SCORE</span><b id="mainBest">0</b></div>
+                  <div class="main-stat"><span>FASTEST DAWN</span><b id="mainFastest">&mdash;</b></div>
+                  <div class="main-stat"><span>DAWNS</span><b id="mainDawns">0</b></div>
+                </div>
               </div>
             </div>
-            <div class="dialog-buttons">
-              <button type="button" tabindex="-1" class="btn default" id="welcomeStart">Start</button>
-              <button type="button" tabindex="-1" class="btn" id="welcomeControls">Controls…</button>
+            <div class="main-footer">
+              <span id="mainHint">Relay 12 &middot; 03:00 &middot; the channel is open</span>
+              <span id="mainFooterRight">Wordfall 1.5.0 &middot; MIT licence</span>
             </div>
           </div>
+        </div>
+
+        <div class="modal-layer" id="modalLayer">
+          <div class="modal-backdrop" id="modalBackdrop"></div>
 
           <!-- Draft -->
           <div class="dialog dlg-draft" id="dlgDraft">
@@ -190,6 +257,7 @@
             <div class="dialog-buttons">
               <button type="button" tabindex="-1" class="btn default" id="overRetry">Retry</button>
               <button type="button" tabindex="-1" class="btn" id="overSeed">Retry Seed</button>
+              <button type="button" tabindex="-1" class="btn" id="overMenu">Main Menu</button>
               <button type="button" tabindex="-1" class="btn" id="overQuit">Quit</button>
             </div>
           </div>
@@ -200,11 +268,12 @@
             <div class="dialog-body pause-body">
               <div class="pause-seed" id="pauseSeedLine">Seed 0 · 00:00 played</div>
               <p class="pause-note">Words are frozen. Nothing falls until you resume.</p>
-              <p class="fine-print">Press Esc or Enter to resume. Restart begins a new run at wave 1.</p>
+              <p class="fine-print">Press Esc or Enter to resume. Restart begins a new run at wave 1; Main Menu abandons the run.</p>
             </div>
             <div class="dialog-buttons">
               <button type="button" tabindex="-1" class="btn default" id="pauseResume">Resume</button>
               <button type="button" tabindex="-1" class="btn" id="pauseRestart">Restart Run</button>
+              <button type="button" tabindex="-1" class="btn" id="pauseMenu">Main Menu</button>
               <button type="button" tabindex="-1" class="btn" id="pauseControls">Controls…</button>
             </div>
           </div>
@@ -225,7 +294,38 @@
               <p class="fine-print">Records are kept on this machine. Nothing leaves it.</p>
             </div>
             <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn" id="recordsSplits">Splits…</button>
               <button type="button" tabindex="-1" class="btn default" id="recordsOk">OK</button>
+            </div>
+          </div>
+
+          <!-- Splits -->
+          <div class="dialog dlg-splits" id="dlgSplits">
+            <div class="dialog-title"><span>Splits</span></div>
+            <div class="dialog-body">
+              <table class="splits-table">
+                <thead>
+                  <tr><th>Wave</th><th>Best split</th><th>Best to wave</th><th>This run</th></tr>
+                </thead>
+                <tbody id="splitsBody"></tbody>
+              </table>
+              <p class="fine-print">A split is the time spent inside one wave: from the first word of the wave to its tenth clear. Drafts and the wave-clear beat do not count. Records are kept on this machine.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="splitsOk">OK</button>
+            </div>
+          </div>
+
+          <!-- Achievements -->
+          <div class="dialog dlg-achievements" id="dlgAchievements">
+            <div class="dialog-title"><span>Achievements</span></div>
+            <div class="dialog-body">
+              <div class="ach-head" id="achHead">Unlocked 0 / 0</div>
+              <div class="ach-list" id="achList"></div>
+              <p class="fine-print">Achievements unlock on any difficulty and stay on this machine.</p>
+            </div>
+            <div class="dialog-buttons">
+              <button type="button" tabindex="-1" class="btn default" id="achOk">OK</button>
             </div>
           </div>
 
@@ -255,6 +355,8 @@
                 <tr><td class="key">S</td><td>Draft: skip (+150 × wave points, +1 Shield, pressure still rises)</td></tr>
                 <tr><td class="key">F2</td><td>New run</td></tr>
                 <tr><td class="key">Esc</td><td>Pause · resume · close this dialog or a menu</td></tr>
+                <tr><td class="key">Mode</td><td>Game → Difficulty cycles Casual / Standard / Nightmare for the next run</td></tr>
+                <tr><td class="key">Time</td><td>The status bar carries the run clock; every wave stamps a split</td></tr>
                 <tr><td class="key">View</td><td>Effects: Full / Light (rendering quality)</td></tr>
               </table>
               <p class="fine-print">Words closest to the line may only be typed in order. A wrong key resets the combo.</p>
@@ -277,7 +379,7 @@
               </svg>
               <div>
                 <div class="about-head">Wordfall for Windows</div>
-                <div class="about-ver">Version 1.4.1 · soft-focus edition</div>
+                <div class="about-ver">Version 1.5.0 · score-attack edition</div>
                 <p>Read. Commit. Survive.</p>
                 <p class="fine-print">Relay 12 is a night shift you cannot leave. The broadcast is coming apart one word at a time, and the picture is going with it. Patch the receiver, keep the signal alive, and hold the line until Dawn.</p>
                 <p class="fine-print">Boons are clean patches. Gambits overclock the transmitter. Hexes are corrupted packets that slipped through.</p>
@@ -316,6 +418,8 @@
 
       <div class="status-bar" id="statusBar">
         <div class="status-panel grow" id="statusMain">Ready</div>
+        <div class="status-panel" id="statusTime">Time: 00:00</div>
+        <div class="status-panel" id="statusMode">Mode: Standard</div>
         <div class="status-panel" id="statusCombo">Combo: 0.00×</div>
         <div class="status-panel" id="statusScore">Score: 0</div>
         <div class="status-panel" id="statusWave">Wave: 1/12</div>
@@ -324,6 +428,8 @@
         <div class="status-panel" id="statusHeat">Heat: 0</div>
         <div class="status-panel" id="statusPressure">Pressure: 0</div>
       </div>
+
+      <div class="toast-stack" id="toastStack" aria-live="polite"></div>
     </div>
   </div>
 
