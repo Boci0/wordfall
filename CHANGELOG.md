@@ -12,8 +12,9 @@ All notable changes to Wordfall. Every release is also published on the
   1-5 (43 compulsory cards, plus an extra-words deck).
 - **Study page.** [`study.html`](study.html) is a standalone flashcard / listen-and-choose /
   mock-exam page for the same words. Audio uses the browser's own Mandarin voice.
-- **Desktop build.** The Windows exe embeds the same files, so v1.11.0 carries the button;
-  no change to the native shell. The Android APK is not rebuilt for this version.
+- **Desktop and Android builds.** The Windows exe and the Android APK both embed the same
+  files, so v1.11.0 carries the button on every platform; no change to either native shell.
+  Android is versionCode 7 and is signed with the same key as v1.10.1, so it updates in place.
 - **Tests** - `tools/qa-custom.mjs` (124) passes; pack install was checked against a local
   copy of `packs/`, and the live `index.json` answers with CORS open.
 
