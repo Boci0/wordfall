@@ -391,6 +391,22 @@ u { text-underline-offset: 1px; }
   max-width: 100%;
 }
 
+/* A practice stage's name: smaller, wrapped on up to 3 lines instead of cut off. */
+.strip-value.strip-name {
+  font-size: 14px;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+
+@media (max-width: 720px) {
+  .strip-value.strip-name { font-size: 11px; }
+}
+
 .strip-gold { color: #ffd75e; text-shadow: 0 0 8px rgba(255, 200, 60, 0.35); }
 
 .strip-sub {

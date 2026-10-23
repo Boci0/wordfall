@@ -3,6 +3,19 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.11.1 - Cards work by touch
+
+- **Tap to play Cards.** A card deck only answered the keyboard (Space to flip, 1/2/3 or
+  Enter to grade), so on a phone it could not be played at all. Tap anywhere to flip the
+  card, then tap the **Again / Good / Easy** buttons now drawn under it. The keys still
+  work, the buttons also work with a mouse, and a stray tap that misses a button does
+  nothing. The phone keyboard no longer pops up over a deck, since nothing is typed.
+- **Long stage names are no longer cut off.** The status strip hard-cut a stage name to 18
+  characters ("MANDARIN PBU1103 L"). It now shows the whole name, wrapped on up to three
+  lines in a smaller size.
+- **Tests** - `tools/qa-cards.mjs` (64) and `tools/qa-custom.mjs` (124) pass. Tap play and the
+  strip name were checked in a 390x780 touch-emulated browser, not on a physical phone.
+
 ## v1.11.0 - Downloadable deck packs
 
 - **Get packs.** The Custom Stage editor has a **Get packs** button. It lists decks published

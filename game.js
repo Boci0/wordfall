@@ -2850,6 +2850,32 @@
     return false;
   }
 
+  // Touch and mouse: tap the card to flip it, then tap Again / Good / Easy. The
+  // plates are canvas-drawn, so keys and taps drive the same two functions.
+  const CARD_BTN_H = 44;
+
+  function cardButtons() {
+    const gap = 8;
+    const w = Math.floor((Math.min(W - CFG.pad * 2, 520) - gap * 2) / 3);
+    const x0 = Math.round((W - (w * 3 + gap * 2)) / 2);
+    const y = cardFloorY() - CARD_BTN_H - 6;
+    return [['again', '1 AGAIN'], ['good', '2 GOOD'], ['easy', '3 EASY']].map(([grade, label], i) => (
+      { grade, label, x: x0 + i * (w + gap), y, w, h: CARD_BTN_H }
+    ));
+  }
+
+  function cardTap(clientX, clientY) {
+    const custom = state.custom;
+    if (!custom || custom.layout !== 'cards' || !custom.cardLive) return false;
+    if (!custom.cardLive.revealed) return revealCard();
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const x = (clientX - rect.left) / rect.width * W;
+    const y = (clientY - rect.top) / rect.height * H;
+    const hit = cardButtons().find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+    return hit ? gradeCard(hit.grade) : false;
+  }
+
   function updateCards(custom, dt) {
     const live = custom.cardLive;
     if (!live) {
@@ -3816,7 +3842,7 @@
     const gap = live.revealed ? Math.round(promptFit.size * 0.5) : 0;
     const blockH = promptFit.lines.length * promptLH + gap +
       (answerFit ? answerFit.lines.length * answerLH : 0);
-    let top = live.revealed ? Math.min(live.y, floor - blockH - 16) : live.y;
+    let top = live.revealed ? Math.min(live.y, floor - CARD_BTN_H - 6 - blockH - 14) : live.y;
     top = Math.max(24, Math.min(top, Math.max(24, floor - 10)));
     const timeLeft = live.revealed ? 0 : clamp(1 - live.t / live.dur, 0, 1);
     const urgent = !live.revealed && timeLeft < 0.22;
@@ -3868,19 +3894,40 @@
     // Key legend, parked in the top-right where a card can never reach it. It
     // gets its own dark plate and a much larger font: this is the only place
     // that tells a first-time player the drill's controls.
-    const legend = live.revealed
-      ? '1 AGAIN   2 GOOD   3 EASY   ENTER GOOD'
-      : 'SPACE REVEAL';
+    // On a phone the plates below are the cue once flipped, so only the reveal
+    // hint is needed there.
+    const legend = touchPrimary
+      ? (live.revealed ? '' : 'TAP TO REVEAL')
+      : (live.revealed ? '1 AGAIN   2 GOOD   3 EASY   ENTER GOOD' : 'SPACE REVEAL');
     ctx.font = CARD_LEGEND_FONT;
-    ctx.textAlign = 'right';
-    const legendW = ctx.measureText(legend).width;
-    const legendRight = W - CFG.pad;
-    const legendTop = 12;
-    ctx.fillStyle = 'rgba(2, 1, 8, 0.78)';
-    ctx.fillRect(legendRight - legendW - 10, legendTop - 4, legendW + 18, 24);
-    ctx.fillStyle = live.revealed ? COL.accent : COL.white;
-    ctx.globalAlpha = 0.96;
-    ctx.fillText(legend, legendRight, legendTop);
+    if (legend) {
+      ctx.textAlign = 'right';
+      const legendW = ctx.measureText(legend).width;
+      const legendRight = W - CFG.pad;
+      const legendTop = 12;
+      ctx.fillStyle = 'rgba(2, 1, 8, 0.78)';
+      ctx.fillRect(legendRight - legendW - 10, legendTop - 4, legendW + 18, 24);
+      ctx.fillStyle = live.revealed ? COL.accent : COL.white;
+      ctx.globalAlpha = 0.96;
+      ctx.fillText(legend, legendRight, legendTop);
+    }
+
+    // Grade plates (tap or click); the keys still work beside them.
+    if (live.revealed) {
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const b of cardButtons()) {
+        const col = b.grade === 'again' ? COL.danger : b.grade === 'easy' ? COL.accent : COL.typed;
+        ctx.fillStyle = 'rgba(2, 1, 8, 0.78)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+        ctx.fillStyle = col;
+        ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+      }
+    }
     ctx.restore();
   }
 
@@ -5143,6 +5190,7 @@
   }
 
   function restoreStripLabels() {
+    setClass(ui.strip.best, 'strip-name', false);
     const labels = stripLabelEls();
     if (labels.length && labels[0].textContent !== 'RUN') labels[0].textContent = 'RUN';
     if (labels.length > 1 && labels[1].textContent !== 'THIS WAVE') labels[1].textContent = 'THIS WAVE';
@@ -5182,7 +5230,10 @@
         : (custom.memorize ? 'Memorize' : ''));
       setClass(ui.strip.root, 'flash', false);
       setText(ui.strip.mode, 'CUSTOM');
-      setText(ui.strip.best, custom.name.toUpperCase().slice(0, 18));
+      // The whole name (40 chars at most), wrapped by CSS; a hard cut hid the
+      // end of long stage names such as a deck's lesson range.
+      setClass(ui.strip.best, 'strip-name', true);
+      setText(ui.strip.best, custom.name.toUpperCase());
       setText(ui.strip.bestSub, custom.layout === 'lines'
         ? 'Lines' : custom.layout === 'words' ? 'Falling words'
           : custom.layout === 'prompts' ? 'Prompts' : 'Cards');
@@ -5398,6 +5449,8 @@
   // committed string; plain Latin typing still arrives through keydown.
   function focusImeSink() {
     if (!ui.imeSink) return;
+    // A card deck is never typed: keep the phone keyboard down so it cannot cover the plates.
+    if (state.custom && state.custom.layout === 'cards') { blurImeSink(); return; }
     // A password field makes a phone keyboard send each letter as it is tapped
     // instead of composing whole words. Practice stages keep a text field so IME
     // input (pinyin, Japanese, Korean) still works.
@@ -6201,6 +6254,12 @@
     }
   });
 
+  canvas.addEventListener('pointerdown', (event) => {
+    if (state.phase === 'playing' && event.button <= 0 && cardTap(event.clientX, event.clientY)) {
+      event.preventDefault();
+    }
+  });
+
   window.addEventListener('pointerdown', () => {
     ensureAudio();
     // A click can move focus off the IME sink; put it back while a drill runs.
@@ -6438,6 +6497,8 @@
       reveal: revealCard,
       grade: gradeCard,
       cardKey,
+      cardTap,
+      cardButtons,
       typeChunk,
       imeFocused: () => !!(ui.imeSink && document.activeElement === ui.imeSink),
       counts: customCounts,
