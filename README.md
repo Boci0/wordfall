@@ -251,7 +251,8 @@ falling out of the dead channel, and you have until Dawn to hold the line.
 - **Long words get a little more air.** Nine- and ten-letter words fall 8% slower, so the
   longest bands are tense rather than a death sentence; **Casual** slows the whole board.
 - **One Life, and Dawn at wave 12.** Shields absorb wrong keys, Lifeline absorbs a hit, and
-  after Dawn the run continues in endless, score-only mode.
+  after Dawn the run continues in endless, score-only mode, where every wave asks +4 WPM
+  and falls 3% faster than the last.
 - **The clock never stops when the board does.** Pauses and drafts freeze the run clock, but
   every wave is timed; the best split for each wave is kept in **Game → Splits…**.
 - **Fifteen achievements** track the run, from the first clear to a sub-five-minute

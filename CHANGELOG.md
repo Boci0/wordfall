@@ -3,6 +3,20 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## Unreleased
+
+- **Word pool covers the whole alphabet.** The roguelite pool stopped partway through the
+  alphabet: every 5- and 6-letter word began with **a** or **b**, 7-letter words ended at
+  **c** and 8-letter words at **d**, so from wave 3 the board was mostly words sharing a
+  first letter. `words.js` now holds 1,974 words (was 459) across a-z. Each length keeps
+  about its old share, and spawn timing is derived from the target WPM, so the difficulty
+  curve is unchanged. Seeded runs from earlier versions draw different words.
+- **Endless keeps scaling.** Past Dawn every wave used to play exactly like wave 12 (the
+  speed ask, fall speed and word lengths all plateau there), so endless only got easier as
+  the deck grew. Each endless wave now adds +4 WPM to the speed ask and +3% fall speed
+  (Standard: 96 WPM at wave 13, 104 at 15, 124 at 20), and the spawn floor drops from
+  0.88 s to 0.4 s in endless so it does not stall the climb. Waves 1-12 are unchanged.
+
 ## v1.9.2 - Android updater and phone cutoff fixes
 
 - **Android in-app updater.** Help > Check for Updates… now works in the Android app

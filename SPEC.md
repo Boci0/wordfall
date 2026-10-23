@@ -56,7 +56,7 @@ flowchart LR
 - **Pressure** is the one difficulty variable: `pressure = cleared + 4 x draftsTaken`.
   - `wordRange`, `spawnInterval` and `speed` all read `pressure` instead of `cleared`. (Small code change: swap one input.)
   - Skip still counts as a draft taken. You can't dodge escalation by skipping.
-- **Dawn:** finishing wave 12 wins the run. Play continues in endless mode with a score-only goal. Without this, the game has no ending.
+- **Dawn:** finishing wave 12 wins the run. Play continues in endless mode with a score-only goal. Without this, the game has no ending. Endless waves keep escalating past the wave-12 plateau: +`endlessWpmPerWave` (4) WPM and +`endlessSpeedPerWave` (3%) fall speed per wave, with the spawn floor lowered to `endlessSpawnMin` (0.4 s).
 - **Target run length:** 8 to 12 minutes for a 60 WPM player.
 
 ### 2.1 Pause, records, seeds and run stats (M6)
@@ -241,6 +241,9 @@ duplicate cards within a draft.
    5th spawn, tier II every 3rd (§5.2). The measured impact is in §10.
 2. **Meta progression** (unlocking cards between runs): out of scope.
 3. **Word pool:** **Resolved in M5** - 459 words in `words.js`, 38 of them 10-11 letters.
+   That pool stopped partway through the alphabet (every 5- and 6-letter word began with
+   a or b), so it was widened to 1,974 words covering a-z, each length keeping roughly
+   its old share.
 4. **80 WPM bot cell is not discriminative** (99.8% vs a >70% bar). Candidates for a later
    pass: tighten to >85% or add a 70 WPM random cell (30-60%), and/or make the bot's
    draft-quality invariant (slot-1-only vs slot-3-only decks) a first-class acceptance cell.

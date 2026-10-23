@@ -225,7 +225,7 @@ the [README](README.md); release history is in the [changelog](CHANGELOG.md).
 | --- | --- |
 | `index.html` | the Win95 desktop + application markup (title bar, menus, toolbar, dialogs, status bar, taskbar) |
 | `style.css` | the Windows 95 theme: 16-colour palette, 2px bevels, Tahoma/Microsoft Sans Serif, no gradients or blur |
-| `words.js` | 459-word pool (`window.WORDFALL_WORDS`), lengths 3-11 |
+| `words.js` | 1,974-word pool (`window.WORDFALL_WORDS`), lengths 3-11 |
 | `game.js` | the game - config, state, rules, cards, the pixel playfield renderer, audio, DOM UI wiring, headless sim, debug hook |
 | `win/` | native Windows shell: .NET 10 WinForms + WebView2, embeds the web files, borderless Win95 chrome |
 | `win/Updater.cs` | in-app updater: GitHub release check, SHA-256-verified download, staged file swap + relaunch |

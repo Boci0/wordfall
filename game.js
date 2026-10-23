@@ -36,6 +36,11 @@
     demandEnd: 92,            // ...at the start of wave 12 (the last full-pressure point)
     demandCurve: 1.82,        // >1 = gentle start, steeper finish
     spawnMin: 0.88,           // hard safety floor, never reached in a 12-wave run
+    // Endless keeps climbing past the wave-12 plateau: a flat step per wave
+    // after Dawn, with a lower spawn floor so the floor does not stall it.
+    endlessWpmPerWave: 4,
+    endlessSpeedPerWave: 0.03,
+    endlessSpawnMin: 0.4,
     maxWords: 6,              // smaller queue, because words cross twice as fast
 
     // word-length ramp: [pressureThreshold, [shortest, longest]] from the top down.
@@ -1111,11 +1116,18 @@
     // the run never reaches.
     const span = (CFG.wavesPerRun - 1) * (CFG.waveSize + CFG.pressurePerDraft);
     const x = clamp(pressure() / span, 0, 1);
-    return CFG.demandStart + (CFG.demandEnd - CFG.demandStart) * Math.pow(x, CFG.demandCurve);
+    return CFG.demandStart + (CFG.demandEnd - CFG.demandStart) * Math.pow(x, CFG.demandCurve)
+      + CFG.endlessWpmPerWave * endlessWaves();
+  }
+
+  // Endless waves played so far, counting the current one (0 before Dawn).
+  function endlessWaves() {
+    return state.endless ? Math.max(0, state.wave - CFG.wavesPerRun) : 0;
   }
 
   function spawnInterval() {
-    let t = Math.max(CFG.spawnMin, (expectedWordLength() * 12) / demandWpm());
+    const floor = state.endless ? CFG.endlessSpawnMin : CFG.spawnMin;
+    let t = Math.max(floor, (expectedWordLength() * 12) / demandWpm());
     // Drought buys reading time by stretching the queue; it is the Hex/Gambit
     // lane's survival option (spawn rate, not fall speed, is the strong lever).
     const drought = heldTier('drought');
@@ -1126,7 +1138,8 @@
   }
 
   function baseSpeedNow() {
-    return Math.min(CFG.maxSpeed, CFG.baseSpeed + pressure() * CFG.speedPerClear) * difficulty().speed;
+    return Math.min(CFG.maxSpeed, CFG.baseSpeed + pressure() * CFG.speedPerClear)
+      * (1 + CFG.endlessSpeedPerWave * endlessWaves()) * difficulty().speed;
   }
 
   // ─── Word spawn ───────────────────────────────────────────────────────────
