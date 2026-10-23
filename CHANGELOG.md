@@ -3,6 +3,17 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.10.1 - Custom Stage fits on a phone
+
+- **Layout buttons stay on one line.** On a phone the Custom Stage **Falling words**
+  button wrapped its label onto two lines and spilled past its border. Mode buttons now
+  keep their label on one line and the row wraps instead; at 360 px all four still fit
+  on one row.
+- **Toggles wrap.** **Sharp text** ran off the right edge of the dialog. The Memorize /
+  Loop / Clean on start / Sharp text row now wraps on narrow screens.
+- **Tests** - `tools/qa-custom.mjs` (124) passes. The dialog was checked at 360x780 and
+  320x640 with touch emulation, not on a physical phone.
+
 ## v1.10.0 - Full-alphabet word pool and endless scaling
 
 - **Word pool covers the whole alphabet.** The roguelite pool stopped partway through the
