@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandarin Study - PBU1103</title>
+<style>
+:root{--bg:#f4f1ea;--card:#fff;--ink:#1d1d1f;--mute:#6b6b70;--line:#d9d4c7;--acc:#0a6b6b;--ok:#1f8a3b;--bad:#c0392b;--sel:#e3f1f1}
+@media (prefers-color-scheme:dark){:root{--bg:#16181a;--card:#222629;--ink:#ececec;--mute:#9aa0a6;--line:#383d41;--acc:#4fc3c3;--ok:#5fd07a;--bad:#ff7b6b;--sel:#1d3a3a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,"Segoe UI",sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 8px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+button,.chip{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.on,.chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.big{padding:12px 22px;font-size:17px}
+.chip{padding:4px 10px;font-size:14px;user-select:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin:12px 0;text-align:center}
+.hz{font:86px/1.15 "KaiTi","Kaiti SC","STKaiti","Noto Serif SC","Microsoft YaHei",serif;margin:6px 0}
+.hz.sm{font-size:44px}
+.py{font-size:26px;color:var(--acc)}
+.en{font-size:26px;margin:10px 0}
+.mute{color:var(--mute);font-size:14px}
+.row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+.opts{display:grid;gap:8px;margin-top:14px}
+.opts button{text-align:left}
+.opts button.right{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 20%,var(--card))}
+.opts button.wrong{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 20%,var(--card))}
+.opts button.sel{background:var(--sel);border-color:var(--acc)}
+.warn{background:#fff3cd;color:#5a4600;border:1px solid #e6cf7a;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:14px}
+table{width:100%;border-collapse:collapse}
+td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+td.h{font:26px "KaiTi","Kaiti SC","STKaiti","Microsoft YaHei",serif}
+.blur td.b{filter:blur(7px);cursor:pointer}.blur td.b:hover,.blur td.b.show{filter:none}
+.tag{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:0 5px;color:var(--mute)}
+.timer{font-size:34px;font-variant-numeric:tabular-nums;color:var(--acc)}
+.strokes{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.strokes>div{background:#fff;border:1px solid var(--line);border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mandarin Study <span class="mute">PBU1103 Level 1 - Assessment 1 (Listening and Writing)</span></h1>
+  <div class="warn" id="novoice" hidden>No Mandarin voice found in this browser, so audio will be silent or wrong. Open this page in <b>Microsoft Edge</b> (has Chinese voices built in), or on Android Chrome. On Windows you can also add one under Settings &gt; Time &amp; language &gt; Speech.</div>
+  <div class="bar" id="tabs"></div>
+  <div class="bar" id="filter"></div>
+  <div id="main"></div>
+</div>
+<script>
+// [lesson, hanzi, pinyin, meaning, opts]  opts: x=extra (not on the compulsory list), say=what the voice reads,
+// lm=meaning used in listening questions, ex=example, skip=left out of listening (same sound as another item)
+const D=[
+[1,'你','nǐ','you'],
+[1,'好','hǎo','good / well / fine'],
+[1,'吗','ma','added to the end of a statement to make a yes/no question'],
+[1,'很','hěn','very'],
+[1,'早','zǎo','morning'],
+[1,'早安','zǎo ān','good morning'],
+[1,'不','bù','no / not'],
+[1,'对不起','duì bu qǐ','excuse me; to be sorry'],
+[2,'客气','kè qi','polite'],
+[2,'不客气','bú kè qi',"you're welcome"],
+[2,'没(有)','méi (yǒu)','does not have / do not have',{say:'没有'}],
+[2,'没(有)关系','méi (yǒu) guān xi',"doesn't matter",{say:'没有关系'}],
+[2,'再','zài','again'],
+[2,'见','jiàn','meet'],
+[2,'再见','zài jiàn','goodbye / see you again'],
+[2,'老师','lǎo shī','teacher'],
+[2,'们','men','plural'],
+[2,'老师们','lǎo shī men','teachers'],
+[2,'早上','zǎo shang','morning (07:00-11:00)',{x:1}],
+[2,'早上好','zǎo shang hǎo','good morning',{x:1}],
+[2,'中午','zhōng wǔ','noon; midday',{x:1}],
+[2,'中午好','zhōng wǔ hǎo','good midday',{x:1}],
+[2,'下午','xià wǔ','afternoon',{x:1}],
+[2,'下午好','xià wǔ hǎo','good afternoon',{x:1}],
+[2,'午安','wǔ ān','good afternoon',{x:1}],
+[2,'傍晚','bàng wǎn','dusk',{x:1}],
+[2,'傍晚好','bàng wǎn hǎo','good evening',{x:1}],
+[2,'晚上','wǎn shang','in the evening; night',{x:1}],
+[2,'晚上好','wǎn shang hǎo','good evening',{x:1}],
+[2,'晚安','wǎn ān','good night',{x:1}],
+[3,'觉得','jué de','feel'],
+[3,'冷','lěng','cold',{ex:'很冷 hěn lěng - very cold'}],
+[3,'饿','è','hungry',{ex:'很饿 hěn è - very hungry'}],
+[3,'忙','máng','busy',{ex:'很忙 hěn máng - very busy'}],
+[3,'困','kùn','sleepy',{ex:'很困 hěn kùn - very sleepy'}],
+[3,'有','yǒu','has / have'],
+[3,'高兴','gāo xìng','glad / happy'],
+[3,'这个','zhè ge','this one'],
+[3,'热','rè','hot',{x:1}],
+[3,'累','lèi','tired',{x:1}],
+[3,'渴','kě','thirsty',{x:1}],
+[3,'喜欢','xǐ huan','like',{x:1}],
+[3,'那个','nà ge','that one',{x:1}],
+[3,'也','yě','also / too',{x:1}],
+[3,'都','dōu','all',{x:1}],
+[3,'我们','wǒ men','we / us',{x:1}],
+[4,'他','tā','he / him',{lm:'he / him or she / her (same sound)'}],
+[4,'我','wǒ','I / me'],
+[4,'她','tā','she / her',{skip:1}],
+[4,'和','hé','and'],
+[4,'邮局','yóu jú','post office'],
+[4,'银行','yín háng','bank'],
+[4,'医院','yī yuàn','hospital'],
+[4,'想','xiǎng','think; wish to',{x:1}],
+[4,'去','qù','go to',{x:1}],
+[4,'商店','shāng diàn','shop',{x:1}],
+[4,'便利店','biàn lì diàn','convenience store',{x:1}],
+[4,'买','mǎi','buy',{x:1}],
+[4,'东西','dōng xi','goods; thing',{x:1}],
+[4,'要','yào','want to',{x:1}],
+[4,'一起','yī qǐ','together',{x:1}],
+[4,'休息','xiū xi','rest',{x:1}],
+[4,'哪里','nǎ lǐ','where',{x:1}],
+[4,'寄','jì','post; send',{x:1}],
+[4,'快递','kuài dì','express delivery',{x:1}],
+[4,'看','kàn','see; read; watch',{x:1}],
+[4,'医生','yī shēng','doctor',{x:1}],
+[4,'厕所','cè suǒ','toilet',{x:1}],
+[4,'警局','jǐng jú','police station',{x:1}],
+[4,'机场','jī chǎng','airport',{x:1}],
+[4,'车站','chē zhàn','station',{x:1}],
+[5,'一','yī','one (1)'],
+[5,'二','èr','two (2)'],
+[5,'三','sān','three (3)'],
+[5,'四','sì','four (4)'],
+[5,'五','wǔ','five (5)'],
+[5,'六','liù','six (6)'],
+[5,'七','qī','seven (7)'],
+[5,'八','bā','eight (8)'],
+[5,'九','jiǔ','nine (9)'],
+[5,'十','shí','ten (10)'],
+[5,'零','líng','zero (0)',{x:1}],
+[5,'百','bǎi','hundred',{x:1}],
+[5,'千','qiān','thousand',{x:1}],
+[5,'第','dì','ordinal prefix (第一 = first)',{x:1}],
+];
+const ITEMS=D.map(([l,hz,py,m,o],id)=>({id,l,hz,py,m,...o}));
+const $=s=>document.querySelector(s);
+const lmOf=i=>i.lm||i.m;
+const shuffle=a=>{a=[...a];for(let i=a.length;i>1;){const j=Math.random()*i--|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const fmt=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+
+let S={lessons:[1,2,3,4,5],extras:false,view:'cards',mode:'hz'};
+try{Object.assign(S,JSON.parse(localStorage.wfStudy))}catch{}
+const save=()=>{try{localStorage.wfStudy=JSON.stringify(S)}catch{}};
+const pool=()=>ITEMS.filter(i=>S.lessons.includes(i.l)&&(S.extras||!i.x));
+const lpool=()=>pool().filter(i=>!i.skip);
+
+// ---- audio: the browser's own Mandarin voice (no files, works offline when a voice is installed)
+let voice=null;
+function pickVoice(){
+  const v=speechSynthesis.getVoices();
+  voice=v.find(x=>/zh[-_]CN/i.test(x.lang))||v.find(x=>/^zh/i.test(x.lang))||null;
+  $('#novoice').hidden=!!voice||!v.length;
+}
+if('speechSynthesis' in window){speechSynthesis.onvoiceschanged=pickVoice;pickVoice()}else $('#novoice').hidden=false;
+function say(it){
+  if(!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(it.say||it.hz);
+  u.lang='zh-CN';u.rate=.8;if(voice)u.voice=voice;
+  speechSynthesis.speak(u);
+}
+const speakBtn=i=>`<button onclick="say(ITEMS[${i.id}])" title="Play">🔊 Play</button>`;
+
+// ---- stroke order (Hanzi Writer, loaded on demand; needs internet)
+let hwP;
+const hw=()=>hwP||(hwP=new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/hanzi-writer@3.5.0/dist/hanzi-writer.min.js';s.onload=()=>ok(window.HanziWriter);s.onerror=()=>{hwP=null;no()};document.head.appendChild(s)}));
+async function strokes(id){
+  const el=$('#strokes');el.textContent='loading...';
+  try{const H=await hw();el.textContent='';
+    [...ITEMS[id].hz.replace(/[()]/g,'')].forEach(c=>{const d=document.createElement('div');el.appendChild(d);H.create(d,c,{width:110,height:110,padding:6}).loopCharacterAnimation()})}
+  catch{el.textContent='Stroke animation needs an internet connection.'}
+}
+
+// ---- shell: tabs + lesson filter
+const TABS=[['cards','Flashcards'],['listen','Listen & choose'],['exam','Mock exam'],['list','Word list']];
+function shell(){
+  $('#tabs').innerHTML=TABS.map(([k,n])=>`<button class="${S.view===k?'on':''}" onclick="go('${k}')">${n}</button>`).join('');
+  $('#filter').innerHTML='<span class="mute">Lessons:</span>'+[1,2,3,4,5].map(l=>`<span class="chip ${S.lessons.includes(l)?'on':''}" onclick="togL(${l})">${l}</span>`).join('')
+    +`<span class="chip ${S.extras?'on':''}" onclick="togX()">+ extra words</span><span class="mute">${pool().length} items</span>`;
+}
+function go(v){if(ex)clearInterval(ex.iv);ex=null;S.view=v;save();start()}
+function togL(l){S.lessons=S.lessons.includes(l)?S.lessons.filter(x=>x!==l):[...S.lessons,l];save();start()}
+function togX(){S.extras=!S.extras;save();start()}
+function start(){shell();({cards:fcStart,listen:lsStart,exam:exSetup,list:listDraw})[S.view]()}
+
+// ---- flashcards
+let fc={q:[],flip:false,total:0};
+const MODES=[['hz','汉字 → meaning'],['en','Meaning → write it'],['ear','Listen → meaning']];
+function fcStart(){fc.q=shuffle(pool());fc.total=fc.q.length;fc.flip=false;fcDraw(true)}
+function fcDraw(auto){
+  const m=$('#main');
+  const modes=`<div class="bar">${MODES.map(([k,n])=>`<button class="${S.mode===k?'on':''}" onclick="S.mode='${k}';save();fcStart()">${n}</button>`).join('')}</div>`;
+  if(!fc.total){m.innerHTML=modes+'<div class="card">No items. Pick a lesson above.</div>';return}
+  if(!fc.q.length){m.innerHTML=modes+`<div class="card"><h2>Deck finished</h2><p class="mute">${fc.total} cards cleared.</p><button class="big" onclick="fcStart()">Go again</button></div>`;return}
+  const it=fc.q[0],f=fc.flip,md=S.mode;
+  const front=md==='hz'?`<div class="hz">${it.hz}</div>`:md==='en'?`<div class="en">${it.m}</div><div class="py">${it.py}</div>`:`<div style="font-size:60px">🔊</div>`;
+  const back=`<hr style="border:0;border-top:1px solid var(--line)">${md!=='hz'?`<div class="hz">${it.hz}</div>`:''}${md==='en'?'':`<div class="py">${it.py}</div><div class="en">${it.m}</div>`}${it.ex?`<div class="mute">${it.ex}</div>`:''}`
+    +(md==='en'?`<div class="row"><button onclick="strokes(${it.id})">Show stroke order</button></div><div class="strokes" id="strokes"></div>`:'');
+  m.innerHTML=modes+`<div class="card"><div class="mute">${fc.q.length} left of ${fc.total}</div>${front}${f?back:''}
+    <div class="row">${speakBtn(it)}${f?`<button class="big" onclick="fcGrade(0)">Again (1)</button><button class="big on" onclick="fcGrade(1)">Got it (2)</button>`:'<button class="big on" onclick="fcFlip()">Reveal (Space)</button>'}</div>
+    ${md==='en'&&!f?'<p class="mute">Write it on paper first, then reveal.</p>':''}</div>`;
+  if(auto&&md==='ear')say(it);
+}
+function fcFlip(){fc.flip=true;fcDraw();if(S.mode==='hz')say(fc.q[0])}
+function fcGrade(good){const c=fc.q.shift();if(!good)fc.q.splice(Math.min(3,fc.q.length),0,c);fc.flip=false;fcDraw(true)}
+
+// ---- listen & choose
+let ls={n:0,ok:0,it:null,opts:[],ans:null};
+function lsStart(){ls.n=ls.ok=0;lsNext()}
+function lsNext(){
+  const p=lpool();
+  if(p.length<4){$('#main').innerHTML='<div class="card">Pick at least 4 items (more lessons) to play.</div>';ls.it=null;return}
+  const it=p[Math.random()*p.length|0];
+  ls.it=it;ls.ans=null;
+  ls.opts=shuffle([it,...shuffle(p.filter(i=>lmOf(i)!==lmOf(it))).slice(0,3)]);
+  lsDraw();say(it);
+}
+function lsDraw(){
+  const {it,ans}=ls;
+  $('#main').innerHTML=`<div class="card"><div class="mute">Score ${ls.ok} / ${ls.n}</div><div style="font-size:60px">🔊</div>
+    <div class="row">${speakBtn(it)}</div>
+    <div class="opts">${ls.opts.map((o,k)=>`<button class="${ans==null?'':o===it?'right':k===ans?'wrong':''}" ${ans==null?'':'disabled'} onclick="lsPick(${k})"><b>${'ABCD'[k]}.</b> ${lmOf(o)}</button>`).join('')}</div>
+    ${ans==null?'':`<div class="hz sm">${it.hz}</div><div class="py">${it.py}</div><div class="row"><button class="big on" onclick="lsNext()">Next (Enter)</button></div>`}</div>`;
+}
+function lsPick(k){if(ls.ans!=null)return;ls.ans=k;ls.n++;if(ls.opts[k]===ls.it)ls.ok++;lsDraw()}
+
+// ---- mock exam (mirrors the brief: lettered English list, 30 s, 10 spoken items, 15 min writing, 15%)
+let ex=null;
+function exSetup(){
+  $('#main').innerHTML=`<div class="card" style="text-align:left">
+    <h2 style="margin-top:0">Assessment 1 simulation</h2>
+    <ol><li><b>30 s</b> to read a lettered list of English meanings (alphabetical).</li>
+    <li>You hear <b>10</b> Chinese words, one at a time. Pick the letter of the matching meaning.</li>
+    <li>Then <b>15 min</b> to write the 10 characters on paper beside your letters.</li>
+    <li>Marks: meaning right = 0.5% x10 = 5%, character right = 1% x10 = 10%, total 15%.</li></ol>
+    <p class="mute">Real-day checklist: black/blue marker, blank paper with NAME and MATRIC, BIG clear handwriting, webcam showing you + screen + clear table. Uses the lessons ticked above (compulsory words only).</p>
+    <label><input type="checkbox" id="rp"> allow replaying the audio (the real teacher reads once)</label>
+    <div class="row"><button class="big on" onclick="exStart()">Start</button></div></div>`;
+}
+function exStart(){
+  const core=ITEMS.filter(i=>!i.x&&!i.skip),mine=lpool().filter(i=>!i.x);
+  const qs=shuffle(mine.length>=10?mine:core).slice(0,10);
+  const names=new Set(qs.map(lmOf));
+  const more=i=>!qs.includes(i)&&!names.has(lmOf(i));
+  const dis=[];
+  for(const i of shuffle([...mine,...core]))if(dis.length<6&&more(i)&&!dis.some(d=>lmOf(d)===lmOf(i)))dis.push(i);
+  const bank=[...qs,...dis].sort((a,b)=>lmOf(a).localeCompare(lmOf(b)));
+  ex={qs,bank,ans:[],phase:'study',q:0,mark:[],replay:$('#rp').checked,iv:0};
+  exTick(30,()=>{ex.phase='listen';ex.q=0;exQ()});exDraw();
+}
+function exTick(sec,done){
+  clearInterval(ex.iv);ex.t=sec;
+  ex.iv=setInterval(()=>{ex.t--;if(ex.t<=0){clearInterval(ex.iv);done()}else{const e=$('#t');if(e)e.textContent=fmt(ex.t)}},1000);
+}
+function exQ(){exTick(10,()=>{ex.q++;if(ex.q<ex.qs.length)exQ();else exWrite()});exDraw();say(ex.qs[ex.q])}
+function exWrite(){ex.phase='write';exTick(900,exResult);exDraw()}
+function exPick(k){if(ex.phase==='listen'){ex.ans[ex.q]=k;exDraw()}}
+function exResult(){clearInterval(ex.iv);ex.phase='result';exDraw()}
+const bankHtml=pick=>`<div class="opts">${ex.bank.map((b,k)=>`<button class="${pick===k?'sel':''}" ${ex.phase==='listen'?`onclick="exPick(${k})"`:'disabled'}><b>${String.fromCharCode(65+k)}.</b> ${lmOf(b)}</button>`).join('')}</div>`;
+function exDraw(){
+  const m=$('#main'),L=k=>k==null?'-':String.fromCharCode(65+k);
+  if(ex.phase==='study')m.innerHTML=`<div class="card"><div class="mute">Read the list silently</div><div class="timer" id="t">${fmt(ex.t||30)}</div>${bankHtml()}</div>`;
+  else if(ex.phase==='listen')m.innerHTML=`<div class="card"><div class="mute">Question ${ex.q+1} / ${ex.qs.length} - press a letter key or tap</div><div class="timer" id="t">${fmt(ex.t)}</div>
+    ${ex.replay?`<div class="row">${speakBtn(ex.qs[ex.q])}</div>`:''}${bankHtml(ex.ans[ex.q])}</div>`;
+  else if(ex.phase==='write')m.innerHTML=`<div class="card"><div class="mute">Write the 10 characters you heard on paper, beside your letters</div><div class="timer" id="t">${fmt(ex.t)}</div>
+    <div style="font-size:22px;line-height:1.8">${ex.qs.map((_,i)=>`${i+1}) ${L(ex.ans[i])}`).join(' &nbsp; ')}</div>
+    <div class="row"><button class="big on" onclick="exResult()">Finished writing</button></div></div>`;
+  else{
+    const rows=ex.qs.map((q,i)=>{const right=ex.bank[ex.ans[i]]===q;
+      return `<tr><td>${i+1}</td><td class="h">${q.hz}</td><td>${q.py}<br><span class="mute">${right?'✔':'✘'} you: ${L(ex.ans[i])} / answer: ${L(ex.bank.indexOf(q))} ${lmOf(q)}</span></td><td>${speakBtn(q)}</td><td><label><input type="checkbox" onchange="ex.mark[${i}]=this.checked;exScore()"> I wrote it right</label></td></tr>`}).join('');
+    m.innerHTML=`<div class="card"><h2 style="margin-top:0" id="score"></h2><div style="overflow:auto"><table>${rows}</table></div>
+      <div class="row"><button class="big on" onclick="exSetup();ex=null">New paper</button></div></div>`;
+    exScore();
+  }
+}
+function exScore(){
+  const mc=ex.qs.filter((q,i)=>ex.bank[ex.ans[i]]===q).length,cc=ex.mark.filter(Boolean).length;
+  $('#score').textContent=`Meanings ${mc}/10 = ${mc*.5}%  +  characters ${cc}/10 = ${cc}%  =  ${mc*.5+cc} / 15%`;
+}
+
+// ---- word list
+let blurOn=false;
+function listDraw(){
+  const rows=[1,2,3,4,5].filter(l=>S.lessons.includes(l)).map(l=>`<tr><th colspan="4">Lesson ${l}</th></tr>`+pool().filter(i=>i.l===l).map(i=>
+    `<tr><td class="h">${i.hz}</td><td class="b">${i.py}</td><td class="b">${i.m}${i.x?' <span class="tag">extra</span>':''}</td><td><button onclick="say(ITEMS[${i.id}])">🔊</button></td></tr>`).join('')).join('');
+  $('#main').innerHTML=`<div class="bar"><label><input type="checkbox" ${blurOn?'checked':''} onchange="blurOn=this.checked;listDraw()"> blur pinyin &amp; meaning (hover/tap to peek)</label>
+    <button onclick="copyDeck()" id="cp">Copy as Wordfall Cards deck</button></div>
+    <div class="card" style="padding:8px"><table class="${blurOn?'blur':''}" onclick="event.target.closest('td.b')?.classList.toggle('show')">${rows}</table></div>`;
+}
+function copyDeck(){
+  navigator.clipboard.writeText(pool().map(i=>`${i.hz} :: ${i.py} - ${i.m}`).join('\n')).then(()=>{$('#cp').textContent='Copied - paste into Wordfall > Custom Stage > Cards'}).catch(()=>{$('#cp').textContent='Copy blocked by the browser'});
+}
+
+addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey||e.target.type==='checkbox')return;
+  const k=e.key,v=S.view;
+  if(v==='cards'&&fc.q.length){
+    if(k===' '&&!fc.flip){e.preventDefault();fcFlip()}
+    else if(fc.flip&&(k==='1'||k==='2'||k==='Enter')){e.preventDefault();fcGrade(k!=='1')}
+  }else if(v==='listen'&&ls.it){
+    const i='abcd'.indexOf(k.toLowerCase());
+    if(ls.ans==null&&k.length===1&&i>=0)lsPick(i);
+    else if(ls.ans!=null&&(k==='Enter'||k===' ')){e.preventDefault();lsNext()}
+  }else if(v==='exam'&&ex&&ex.phase==='listen'&&k.length===1){
+    const i=k.toUpperCase().charCodeAt(0)-65;if(i>=0&&i<ex.bank.length)exPick(i);
+  }
+});
+start();
+</script>
+</body>
+</html>

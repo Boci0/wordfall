@@ -382,7 +382,10 @@
               </div>
               <div class="custom-text-head">
                 <label class="main-label" for="customText">YOUR TEXT</label>
-                <button type="button" tabindex="-1" class="btn custom-clean" id="customCleanBtn" title="Strip links, URLs, citation markers like [b] or [1], and wiki clutter">Clean text</button>
+                <span class="custom-head-btns">
+                  <button type="button" tabindex="-1" class="btn custom-clean" id="customPacksBtn" title="Download ready-made decks (needs internet); they save as normal stages">Get packs</button>
+                  <button type="button" tabindex="-1" class="btn custom-clean" id="customCleanBtn" title="Strip links, URLs, citation markers like [b] or [1], and wiki clutter">Clean text</button>
+                </span>
               </div>
               <textarea class="custom-text" id="customText" spellcheck="false" placeholder="Paste or type anything: a poem, lyrics, vocabulary, a speech&hellip;"></textarea>
               <div class="custom-options">
@@ -403,6 +406,7 @@
                 </div>
               </div>
               <div class="custom-meta" id="customMeta">Paste some text to begin.</div>
+              <div class="custom-saved" id="customPacks" aria-label="Downloadable packs" hidden></div>
               <div class="custom-saved" id="customSaved" aria-label="Saved stages"></div>
               <p class="fine-print" id="customHint">Practice stage: no deck, no lives, no Pressure. Start it and the strip shows your time and progress.</p>
             </div>

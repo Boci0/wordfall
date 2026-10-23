@@ -1912,6 +1912,8 @@ body.embedded .app.maximized {
   font-size: 10px;
 }
 
+.custom-head-btns { display: inline-flex; gap: 4px; }
+
 .custom-text {
   display: block;
   width: 100%;

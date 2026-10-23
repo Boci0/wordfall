@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "mandarin-pbu1103-core",
+      "name": "Mandarin PBU1103 L1-5 core",
+      "file": "mandarin-pbu1103-core.txt",
+      "cards": 43,
+      "about": "Compulsory characters from lessons 1-5: character to pinyin and meaning."
+    },
+    {
+      "id": "mandarin-pbu1103-extra",
+      "name": "Mandarin PBU1103 L1-5 extra",
+      "file": "mandarin-pbu1103-extra.txt",
+      "cards": 42,
+      "about": "Extra slide vocabulary (greetings, places, feelings, ordinals) that is not on the compulsory list."
+    }
+  ]
+}

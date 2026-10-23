@@ -4204,6 +4204,7 @@
       clean: $('customClean'),
       crisp: $('customCrisp'),
       saved: $('customSaved'),
+      packs: $('customPacks'),
       meta: $('customMeta'),
       hint: $('customHint'),
       remove: $('customDelete'),
@@ -4658,6 +4659,97 @@
     customEditingId = null;
     setCustomHint(`Deleted \u201c${name}\u201d \u00b7 ${customStages.length} of ${CUSTOM.maxStages} stages left.`);
     buildCustomSavedList();
+  }
+
+  // ── packs: downloadable decks ─────────────────────────────────────────────
+  // packs/index.json on the project's GitHub Pages lists ready-made Cards decks.
+  // Installing one saves it as an ordinary stage, so it works offline after that.
+  const PACKS_URL = 'https://boci0.github.io/wordfall/packs/';
+  let packList = null;
+
+  function packNote(text) {
+    const box = ui.custom.packs;
+    box.textContent = '';
+    const note = document.createElement('div');
+    note.className = 'custom-saved-empty';
+    note.textContent = text;
+    box.appendChild(note);
+  }
+
+  async function togglePacksAction() {
+    const box = ui.custom && ui.custom.packs;
+    if (!box) return;
+    box.hidden = !box.hidden;
+    if (box.hidden || packList) { if (packList) buildPackList(); return; }
+    packNote('Loading packs…');
+    try {
+      const res = await fetch(PACKS_URL + 'index.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      packList = (Array.isArray(data.packs) ? data.packs : []).filter((p) =>
+        p && typeof p.name === 'string' && /^[\w.-]+\.txt$/.test(String(p.file)));
+      buildPackList();
+    } catch (e) {
+      packList = null;
+      packNote('Could not reach the pack list. Check your connection and try again.');
+    }
+  }
+
+  function buildPackList() {
+    const box = ui.custom.packs;
+    box.textContent = '';
+    if (!packList.length) { packNote('No packs published yet.'); return; }
+    for (const pack of packList) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'custom-saved-item';
+      if (pack.about) item.title = String(pack.about);
+      const name = document.createElement('span');
+      name.className = 'custom-saved-name';
+      name.textContent = String(pack.name).slice(0, 40);
+      const note = document.createElement('span');
+      note.className = 'custom-saved-note';
+      const have = customStages.some((s) => s.name === name.textContent);
+      note.textContent = (Number(pack.cards) ? pack.cards + ' cards · ' : '') + (have ? 'Update' : 'Install');
+      item.appendChild(name);
+      item.appendChild(note);
+      item.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ensureAudio();
+        installPack(pack);
+      });
+      box.appendChild(item);
+    }
+  }
+
+  async function installPack(pack) {
+    setCustomHint(`Downloading “${pack.name}”…`);
+    try {
+      const res = await fetch(PACKS_URL + pack.file, { cache: 'no-cache' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      if (text.length > CUSTOM.maxTextChars) throw new Error('too large');
+      const record = customStageFromRecord({ name: pack.name, text, layout: 'cards' });
+      if (!record || !customCardCounts(record.text).cards) throw new Error('empty');
+      const existing = customStages.find((s) => s.name === record.name);
+      if (existing) {
+        Object.assign(existing, { text: record.text, layout: 'cards', updated: Date.now() });
+        record.id = existing.id;
+      } else {
+        if (customStages.length >= CUSTOM.maxStages) {
+          setCustomHint(`Stage list is full (${CUSTOM.maxStages}). Delete one first.`);
+          return;
+        }
+        customStages.unshift(record);
+      }
+      saveCustomStages();
+      loadCustomStageIntoForm(customStages.find((s) => s.id === record.id));
+      buildPackList();
+      setCustomHint(`${existing ? 'Updated' : 'Installed'} “${record.name}” — press Start.`);
+    } catch (e) {
+      setCustomHint(`Could not install “${pack.name}”. Check your connection.`);
+    }
   }
 
   // Start a blank editor without touching the saved list: the way to make a
@@ -5681,6 +5773,7 @@
     }
     click('customNew', newCustomStageAction);
     click('customCleanBtn', cleanCustomTextAction);
+    click('customPacksBtn', togglePacksAction);
     click('customStart', submitCustomStage);
     click('customSave', saveCustomStageAction);
     click('customDelete', deleteCustomStageAction);

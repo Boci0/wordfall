@@ -1,0 +1,43 @@
+你 :: nǐ - you
+好 :: hǎo - good / well / fine
+吗 :: ma - added to the end of a statement to make a yes/no question
+很 :: hěn - very
+早 :: zǎo - morning
+早安 :: zǎo ān - good morning
+不 :: bù - no / not
+对不起 :: duì bu qǐ - excuse me; to be sorry
+客气 :: kè qi - polite
+不客气 :: bú kè qi - you're welcome
+没(有) :: méi (yǒu) - does not have / do not have
+没(有)关系 :: méi (yǒu) guān xi - doesn't matter
+再 :: zài - again
+见 :: jiàn - meet
+再见 :: zài jiàn - goodbye / see you again
+老师 :: lǎo shī - teacher
+们 :: men - plural
+老师们 :: lǎo shī men - teachers
+觉得 :: jué de - feel
+冷 :: lěng - cold
+饿 :: è - hungry
+忙 :: máng - busy
+困 :: kùn - sleepy
+有 :: yǒu - has / have
+高兴 :: gāo xìng - glad / happy
+这个 :: zhè ge - this one
+他 :: tā - he / him
+我 :: wǒ - I / me
+她 :: tā - she / her
+和 :: hé - and
+邮局 :: yóu jú - post office
+银行 :: yín háng - bank
+医院 :: yī yuàn - hospital
+一 :: yī - one (1)
+二 :: èr - two (2)
+三 :: sān - three (3)
+四 :: sì - four (4)
+五 :: wǔ - five (5)
+六 :: liù - six (6)
+七 :: qī - seven (7)
+八 :: bā - eight (8)
+九 :: jiǔ - nine (9)
+十 :: shí - ten (10)

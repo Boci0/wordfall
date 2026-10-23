@@ -175,6 +175,9 @@ Read. Commit. Survive. Windows, Android and the browser. No account, no ads, no 
 - Every layout takes **any language**. Lines and Falling words now keep non-Latin text and
   accept IME input (pinyin → 汉字, Japanese, Korean); Cards and Prompts are Unicode all the
   way down
+- **Get packs** in the Custom Stage editor downloads ready-made decks from [`packs/`](packs/)
+  (a Mandarin PBU1103 lessons 1-5 set to start) and saves them as normal Cards stages;
+  [`study.html`](study.html) is a standalone listening / mock-exam page for the same words
 
 </td>
 <td width="50%" valign="top">

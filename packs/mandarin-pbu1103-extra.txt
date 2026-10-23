@@ -1,0 +1,42 @@
+早上 :: zǎo shang - morning (07:00-11:00)
+早上好 :: zǎo shang hǎo - good morning
+中午 :: zhōng wǔ - noon; midday
+中午好 :: zhōng wǔ hǎo - good midday
+下午 :: xià wǔ - afternoon
+下午好 :: xià wǔ hǎo - good afternoon
+午安 :: wǔ ān - good afternoon
+傍晚 :: bàng wǎn - dusk
+傍晚好 :: bàng wǎn hǎo - good evening
+晚上 :: wǎn shang - in the evening; night
+晚上好 :: wǎn shang hǎo - good evening
+晚安 :: wǎn ān - good night
+热 :: rè - hot
+累 :: lèi - tired
+渴 :: kě - thirsty
+喜欢 :: xǐ huan - like
+那个 :: nà ge - that one
+也 :: yě - also / too
+都 :: dōu - all
+我们 :: wǒ men - we / us
+想 :: xiǎng - think; wish to
+去 :: qù - go to
+商店 :: shāng diàn - shop
+便利店 :: biàn lì diàn - convenience store
+买 :: mǎi - buy
+东西 :: dōng xi - goods; thing
+要 :: yào - want to
+一起 :: yī qǐ - together
+休息 :: xiū xi - rest
+哪里 :: nǎ lǐ - where
+寄 :: jì - post; send
+快递 :: kuài dì - express delivery
+看 :: kàn - see; read; watch
+医生 :: yī shēng - doctor
+厕所 :: cè suǒ - toilet
+警局 :: jǐng jú - police station
+机场 :: jī chǎng - airport
+车站 :: chē zhàn - station
+零 :: líng - zero (0)
+百 :: bǎi - hundred
+千 :: qiān - thousand
+第 :: dì - ordinal prefix (第一 = first)
