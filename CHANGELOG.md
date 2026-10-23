@@ -3,6 +3,20 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.11.0 - Downloadable deck packs
+
+- **Get packs.** The Custom Stage editor has a **Get packs** button. It lists decks published
+  in [`packs/`](packs/) on the project's GitHub Pages site; picking one saves it as a normal
+  Cards stage (picking an installed one updates it). After that it works offline. Needs an
+  internet connection only while downloading. A first pack ships: Mandarin PBU1103 lessons
+  1-5 (43 compulsory cards, plus an extra-words deck).
+- **Study page.** [`study.html`](study.html) is a standalone flashcard / listen-and-choose /
+  mock-exam page for the same words. Audio uses the browser's own Mandarin voice.
+- **Desktop build.** The Windows exe embeds the same files, so v1.11.0 carries the button;
+  no change to the native shell. The Android APK is not rebuilt for this version.
+- **Tests** - `tools/qa-custom.mjs` (124) passes; pack install was checked against a local
+  copy of `packs/`, and the live `index.json` answers with CORS open.
+
 ## v1.10.1 - Custom Stage fits on a phone
 
 - **Layout buttons stay on one line.** On a phone the Custom Stage **Falling words**
