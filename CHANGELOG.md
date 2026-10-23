@@ -3,6 +3,23 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
+## v1.11.2 - Menus open without a hitch
+
+- **First menu no longer stalls.** The first time you tapped anything, the game created its
+  audio context on the spot, and the first dialog you opened was also laid out from scratch,
+  so Achievements, Records and Custom Stage hitched on first open. The audio context is now
+  built quietly a second after load and each dialog is laid out once while hidden on the main
+  screen. On a phone-sized screen with the CPU slowed 4x, time to the first frame after
+  opening Achievements dropped from 139 ms to 39 ms (Records 12 ms, About 19 ms, Custom Stage
+  46 ms).
+- **Lighter behind dialogs.** While an info dialog covers a paused game or the main menu, the
+  board is drawn every other frame instead of every frame; logic and input are unchanged.
+  CPU use behind a dialog fell from 39% to 23% in the same test.
+- **Tests** - `tools/qa-custom.mjs` (124), `qa-cards.mjs` (64), `qa-unicode.mjs` (37),
+  `qa-v15.mjs` (56) and the smoke run pass. `tools/qa-juice.mjs` still fails: it is a v1.4-era
+  script that expects game version "M7" and fails the same way on v1.11.1. Timings were taken
+  in headless Chrome with CPU throttling, not on a physical phone.
+
 ## v1.11.1 - Cards work by touch
 
 - **Tap to play Cards.** A card deck only answered the keyboard (Space to flip, 1/2/3 or

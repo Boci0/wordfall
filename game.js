@@ -4366,6 +4366,23 @@
     uiModal = name;
   }
 
+  // The first time a dialog is shown the browser lays out and styles it from
+  // scratch, which is a visible hitch on a phone. Lay each one out once while
+  // hidden (menu only, never mid-run) so the first real open is as fast as the rest.
+  function warmDialogs() {
+    if (state.phase !== 'menu' || uiModal || !ui.modalLayer) return;
+    ui.modalLayer.style.visibility = 'hidden';
+    setClass(ui.modalLayer, 'open', true);
+    for (const dialog of Object.values(ui.dialogs)) {
+      if (!dialog) continue;
+      setClass(dialog, 'show', true);
+      void dialog.offsetHeight;
+      setClass(dialog, 'show', false);
+    }
+    setClass(ui.modalLayer, 'open', false);
+    ui.modalLayer.style.visibility = '';
+  }
+
   function hideDialogs() {
     for (const key of Object.keys(ui.dialogs)) setClass(ui.dialogs[key], 'show', false);
     setClass(ui.modalLayer, 'open', false);
@@ -5920,7 +5937,10 @@
   let master = null;
   let clickBuf = null;
 
-  function ensureAudio() {
+  // Opening the audio device is the slow part (about 20 ms on a desktop, far more
+  // on a phone), so boot builds the context while idle. A tap then only has to
+  // resume it, instead of freezing the first menu you open.
+  function ensureAudio(prewarm) {
     if (state.simulating || state.muted) return;
     try {
       if (!ac) {
@@ -5941,7 +5961,7 @@
         master.connect(comp);
         comp.connect(ac.destination);
       }
-      if (ac.state === 'suspended') ac.resume().catch(() => {});
+      if (ac.state === 'suspended' && !prewarm) ac.resume().catch(() => {});
       if (!clickBuf) {
         const len = Math.max(1, Math.floor(ac.sampleRate * 0.055));
         clickBuf = ac.createBuffer(1, len, ac.sampleRate);
@@ -6109,9 +6129,15 @@
     }
 
     update(dt);
-    render();
+    // Behind an info dialog (Achievements, Records, Custom Stage...) the board is
+    // covered and paused, so draw every other frame: half the GPU/CPU for nothing
+    // the player can see. Logic and input still run at full rate.
+    const covered = !!uiModal && (state.phase === 'paused' || state.phase === 'menu');
+    coveredTick = !coveredTick;
+    if (!covered || coveredTick) render();
     requestAnimationFrame(frame);
   }
+  let coveredTick = false;
 
   // ─── Input ────────────────────────────────────────────────────────────────
   window.addEventListener('keydown', (event) => {
@@ -6512,6 +6538,8 @@
   loadCustomStages();
   resize();
   initUi();
+  setTimeout(() => ensureAudio(true), 1200);
+  setTimeout(warmDialogs, 1800);
   if (window.ResizeObserver) {
     new ResizeObserver(() => resize()).observe($('client'));
   }
