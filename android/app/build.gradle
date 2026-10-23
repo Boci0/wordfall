@@ -11,8 +11,8 @@ android {
         minSdk 24
         // 34 keeps windowSoftInputMode=adjustResize working without edge-to-edge inset code.
         targetSdk 34
-        versionCode 4
-        versionName '1.9.2'
+        versionCode 5
+        versionName '1.10.0'
     }
 
     compileOptions {

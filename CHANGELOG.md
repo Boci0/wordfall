@@ -3,7 +3,7 @@
 All notable changes to Wordfall. Every release is also published on the
 [releases page](https://github.com/Boci0/wordfall/releases) with the download attached.
 
-## Unreleased
+## v1.10.0 - Full-alphabet word pool and endless scaling
 
 - **Word pool covers the whole alphabet.** The roguelite pool stopped partway through the
   alphabet: every 5- and 6-letter word began with **a** or **b**, 7-letter words ended at
@@ -16,6 +16,9 @@ All notable changes to Wordfall. Every release is also published on the
   the deck grew. Each endless wave now adds +4 WPM to the speed ask and +3% fall speed
   (Standard: 96 WPM at wave 13, 104 at 15, 124 at 20), and the spawn floor drops from
   0.88 s to 0.4 s in endless so it does not stall the climb. Waves 1-12 are unchanged.
+- **Tests** - `tools/bot.mjs` passes all 7 cells (60 WPM random reaches Dawn in 41%),
+  `qa-cards.mjs` (57) and `qa-custom.mjs` (124) pass. The bot does not play endless; the
+  endless numbers were read from the live game, not playtested deep into a run.
 
 ## v1.9.2 - Android updater and phone cutoff fixes
 
